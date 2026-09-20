@@ -46,4 +46,32 @@ public class JwtUtil {
         Claims claims = parseToken(token);
         return claims.getExpiration().before(new Date());
     }
+
+    /**
+     * 校验token是否合法（格式正确、签名正确、未过期）
+     * @param token jwt字符串
+     * @return true=合法；false=非法/过期/篡改
+     */
+    public boolean verifyToken(String token) {
+        try {
+            Claims claims = parseToken(token);
+            // 解析成功并且未过期
+            return !isExpired(token);
+        } catch (Exception e) {
+            // 任何异常：签名错误、过期、格式错误、null都返回false
+            return false;
+        }
+    }
+
+    /**
+     * 从token中获取userId
+     * 注意：你现在generateToken里subject是username，我新增重载方案：
+     * 方案A：修改生成token，把userId放到claim，推荐（适合你们系统）
+     */
+    public Long getUserId(String token) {
+        Claims claims = parseToken(token);
+        // 读取claim中存入的userId
+        return Long.valueOf(claims.get("userId").toString());
+    }
+
 }

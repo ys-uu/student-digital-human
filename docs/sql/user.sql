@@ -20,21 +20,21 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- ----------------------------
 -- Table structure for user
 -- ----------------------------
-DROP TABLE IF EXISTS `user`;
-CREATE TABLE `user`  (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `username` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '用户名',
-  `password` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '密码',
-  `role` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT 'user' COMMENT '角色',
-  `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `username`(`username` ASC) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+-- 用户表，和Java User实体对应，数据库下划线命名
+CREATE TABLE `user` (
+                        `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键id',
+                        `username` VARCHAR(50) NOT NULL UNIQUE COMMENT '账号',
+                        `password` VARCHAR(100) NOT NULL COMMENT '密码，项目正式上线要BCrypt加密，这里测试明文',
+                        `real_name` VARCHAR(50) NOT NULL COMMENT '真实姓名',
+                        `role` VARCHAR(20) NOT NULL COMMENT '角色：student / admin',
+                        `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                        `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';
 
--- ----------------------------
--- Records of user
--- ----------------------------
-INSERT INTO `user` VALUES (1, 'admin', '$2a$10$r1X0ruO6cAy93Hx4HPiebuKQXy4DCJSHa2dLvfLWOl4lVAVdBjvE2', 'admin', '2026-09-12 19:09:01');
-INSERT INTO `user` VALUES (2, 'student', '$2a$10$Mltnbdk89gI1gkwjyAh51uDhtGgkaRc0Qf4eKFLyJpnSXPXzS3An2', 'student', '2026-09-12 19:09:01');
+-- 插入一条学生、一条管理员
+INSERT INTO `user`(`username`, `password`, `real_name`, `role`)
+VALUES
+    ('student01', '123456', '张三', 'student'),
+    ('admin01', '123456', '管理员', 'admin');
 
 SET FOREIGN_KEY_CHECKS = 1;

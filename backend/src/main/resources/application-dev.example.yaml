@@ -8,7 +8,7 @@
 spring:
   datasource:
     url: jdbc:mysql://127.0.0.1:3307/aitutor?useUnicode=true&characterEncoding=utf8
-    username: root
+    username: 你的本地数据库账号
     password: 你的本地数据库密码
 
 cors:
