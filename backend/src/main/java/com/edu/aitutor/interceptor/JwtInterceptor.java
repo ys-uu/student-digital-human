@@ -28,7 +28,7 @@ public class JwtInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        // ========= 改动这里，解析Authorization Bearer token =========
+        // 解析Authorization Bearer token
         String authHeader = request.getHeader("Authorization");
         String token = null;
         if(authHeader != null && authHeader.startsWith("Bearer ")){
