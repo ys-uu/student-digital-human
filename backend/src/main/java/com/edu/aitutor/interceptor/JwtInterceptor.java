@@ -22,14 +22,18 @@ public class JwtInterceptor implements HandlerInterceptor {
             log.info("放行OPTIONS请求");
             return true;
         }
-        // 放行登录接口 + error页面
         String uri = request.getRequestURI();
-        if ("/user/login".equals(uri) || "/error".equals(uri)) {
+        if ("/api/v1/user/login".equals(uri) || "/error".equals(uri)) {
             log.info("放行登录/error接口");
             return true;
         }
 
-        String token = request.getHeader("token");
+        // 解析Authorization Bearer token
+        String authHeader = request.getHeader("Authorization");
+        String token = null;
+        if(authHeader != null && authHeader.startsWith("Bearer ")){
+            token = authHeader.substring(7);
+        }
         if (token == null || token.isEmpty()) {
             log.info("token为空，返回401");
             response.setStatus(401);

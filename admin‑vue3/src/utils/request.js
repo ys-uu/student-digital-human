@@ -1,28 +1,28 @@
 import axios from 'axios'
-// 不要在拦截器里面 import useUserStore！
+
 const service = axios.create({
-    baseURL: 'http://localhost:8080',
+    baseURL: '',
     timeout: 10000
 })
 
-// 请求拦截器：只保留基础逻辑，不在内部实例pinia
+// 请求拦截器：自动带上 token
 service.interceptors.request.use(
     config => {
+        const token = localStorage.getItem('token')
+        if (token) {
+            config.headers['Authorization'] = 'Bearer ' + token
+        }
         return config
     },
-    error => {
-        return Promise.reject(error)
-    }
+    error => Promise.reject(error)
 )
 
 // 响应拦截器
 service.interceptors.response.use(
-    response => {
-        return response.data
-    },
+    response => response.data,
     error => {
         if (error.response && error.response.status === 401) {
-            // 401跳转这里同样不能useUserStore，先直接跳转页面
+            localStorage.removeItem('token')   // 顺手清掉
             location.href = '/login'
         }
         return Promise.reject(error)
@@ -30,3 +30,4 @@ service.interceptors.response.use(
 )
 
 export default service
+
