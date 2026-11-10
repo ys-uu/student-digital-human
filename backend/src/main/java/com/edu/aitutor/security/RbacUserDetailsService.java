@@ -36,7 +36,7 @@ public class RbacUserDetailsService implements UserDetailsService {
     private UserMapper userMapper;
     @Resource
     private RbacMapper rbacMapper;
-    @Resource
+    @Resource(name = "stringRedisTemplate")
     private StringRedisTemplate redisTemplate;
     @Resource
     private ObjectMapper objectMapper;
