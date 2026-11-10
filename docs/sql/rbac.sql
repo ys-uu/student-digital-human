@@ -163,7 +163,22 @@ from `sys_user` u
 where u.`is_deleted` = 0;
 
 -- ============================================================
--- 九、导入后核对
+-- 九、权限管理类操作权限（角色/权限/用户授权；教务凭 *:* 自动拥有，无需单独授权）
+-- ============================================================
+insert ignore into `sys_permission`
+  (`id`, `parent_id`, `perm_code`, `perm_name`, `perm_type`, `path`, `component`, `icon`)
+values
+  (26, 0, 'system:role:list',       '角色列表',     2, null, null, null),
+  (27, 0, 'system:role:save',       '新增角色',     2, null, null, null),
+  (28, 0, 'system:role:update',     '编辑角色',     2, null, null, null),
+  (29, 0, 'system:role:delete',     '删除角色',     2, null, null, null),
+  (30, 0, 'system:role:assign',     '角色分配权限', 2, null, null, null),
+  (31, 0, 'system:permission:tree', '权限树查询',   2, null, null, null),
+  (32, 0, 'system:user:list',       '用户列表',     2, null, null, null),
+  (33, 0, 'system:user:assign',     '用户分配角色', 2, null, null, null);
+
+-- ============================================================
+-- 十、导入后核对
 -- ============================================================
 select 'sys_role' as `table_name`, count(*) as `rows` from `sys_role`
 union all
