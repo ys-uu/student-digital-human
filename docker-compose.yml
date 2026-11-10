@@ -1,0 +1,50 @@
+# 本项目本地开发中间件编排（MySQL + Redis）
+# 镜像均使用本机已下载版本，启动时不会重新拉取
+# 启动：在本文件所在目录执行 docker compose up -d
+# 停止：docker compose down（需同时清空数据卷才加 -v，请勿随意使用）
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: aitutor-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: "123456"
+      MYSQL_DATABASE: "ai_tutor"
+      TZ: Asia/Shanghai
+    # 字符集与后端表定义保持一致
+    command:
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_general_ci
+      --default-authentication-plugin=mysql_native_password
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 首次启动（空数据卷）自动建库导表：清空数据卷后启用下一行，脚本位于 docs/sql/
+      # - ./docs/sql/ai_tutor.sql:/docker-entrypoint-initdb.d/ai_tutor.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p123456"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: aitutor-redis
+    restart: unless-stopped
+    ports:
+      # 宿主 6379 被 Windows 服务 rediszt3 占用，本项目 redis 映射到 6381；容器内仍为 6379
+      - "6381:6379"
+    # AOF 持久化，重启容器后数据不丢；本地开发不设密码
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  mysql-data:
+  redis-data:
