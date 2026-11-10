@@ -14,6 +14,20 @@ const router = createRouter({
       meta: { roles: ['teacher', 'admin'] }
     },
     {
+      path: '/admin/role',
+      name: 'admin-role',
+      component: () => import('@/views/admin/role/index.vue'),
+      // 角色授权管理：仅教务可访问
+      meta: { roles: ['admin'], permissions: ['system:role:list'] }
+    },
+    {
+      path: '/admin/user',
+      name: 'admin-user',
+      component: () => import('@/views/admin/user/index.vue'),
+      // 用户角色分配：仅教务可访问
+      meta: { roles: ['admin'], permissions: ['system:user:list'] }
+    },
+    {
       path: '/student',
       name: 'student',
       component: () => import('@/views/student/index.vue'),

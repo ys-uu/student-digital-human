@@ -13,6 +13,12 @@
       <el-button v-role="['admin']" type="danger">教务专属操作</el-button>
     </div>
 
+    <!-- 禅道风格授权管理入口，仅教务可见 -->
+    <div v-role="['admin']" class="btn-group">
+      <el-button type="primary" plain @click="router.push('/admin/role')">角色与权限管理</el-button>
+      <el-button type="primary" plain @click="router.push('/admin/user')">用户角色分配</el-button>
+    </div>
+
     <el-button class="logout-btn" @click="handleLogout">退出登录</el-button>
   </div>
 </template>
