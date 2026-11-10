@@ -1,11 +1,9 @@
 package com.edu.aitutor.config;
 
-import org.mybatis.spring.SqlSessionFactoryBean;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import javax.sql.DataSource;
@@ -30,12 +28,5 @@ public class MyBatisConfig {
         config.setUsername(username);
         config.setPassword(password);
         return new HikariDataSource(config);
-    }
-
-    @Bean
-    public SqlSessionFactoryBean sqlSessionFactory(DataSource dataSource) throws Exception {
-        SqlSessionFactoryBean factoryBean = new SqlSessionFactoryBean();
-        factoryBean.setDataSource(dataSource);
-        return factoryBean;
     }
 }
