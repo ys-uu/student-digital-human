@@ -26,6 +26,7 @@
 14. [教师后台（FR-10）](#14-教师后台fr-10)
 15. [AI 能力接口](#15-ai-能力接口)
 16. [附录](#16-附录)
+17. [v1.3 架构扩展接口（服务拆分与 RAG）](#17-v13-架构扩展接口服务拆分与-rag)
 
 ---
 
@@ -1628,6 +1629,236 @@ data: {"message_id": 9101, "guide_stage": 2, "audio_url": "https://cdn.../reply.
 | 77 | 认证 | 手机验证码登录 | POST | /api/v1/auth/sms/login | ✅ |
 
 > 汇总表内列 77 行；此外扫码登录接口组 6 个（`/qr/create`、`/qr/status`、`/qr/scan`、`/qr/confirm`、`/qr/cancel`、`/qr/mock-users`）路径无 `/api/v1` 前缀，单列于 3.6~3.9。合计可调用端点 **86** 个。
+
+---
+
+## 17. v1.3 架构扩展接口（服务拆分与 RAG）
+
+> 本章对应架构调整：Java 模块化主服务 + Python AI 服务（FastAPI）+ MinIO + Qdrant，由 Nginx 统一入口。
+> 通用规范（Result 包装、错误码、分页、Header）沿用第 2 章；本章只描述路径、参数与服务归属。
+> 与 v1.1 接口的替代/并存关系见 17.8。
+
+### 17.1 Nginx 路由规则
+
+| 路径前缀 | 目标服务 | 说明 |
+| --- | --- | --- |
+| `/api/v1/ai/**` | Python AI 服务（:8000） | 流式对话等，Python 本地验 JWT |
+| `/api/v1/**`（除 ai 外） | Java 主服务（:8080） | 业务、认证、知识库、文件 |
+| `/qr/**` | Java 主服务 | 扫码登录 |
+| `/internal/**` | 外部一律拒绝（404） | 仅 Docker 内部网络可达，见 17.6 |
+
+### 17.2 知识库管理（Java 主服务）
+
+#### 17.2.1 创建知识库  🔒
+
+- **接口**：`POST /api/v1/kb`
+- **权限**：登录用户；`visibility=2 公共库`仅教师/教务可创建（RBAC 拦截），学生仅可建私有库。
+
+**请求参数**
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `kbName` | string | ✅ | 知识库名称 |
+| `description` | string | 否 | 描述 |
+| `visibility` | int | ✅ | 1 私有库，2 公共库，3 课程库 |
+| `courseId` | string | 否 | 课程 ID；`visibility=3` 时必填 |
+
+**响应 data**：知识库对象，含 `id`、`kbName`、`description`、`ownerId`、`visibility`、`courseId`、`docCount`、`status`、`createTime`。
+
+#### 17.2.2 知识库列表（按权限过滤）  🔒
+
+- **接口**：`GET /api/v1/kb`
+- **Query**：`visibility`（可选）、`keyword`、`page`、`page_size`
+- **说明**：只返回当前用户可访问的库——私有库仅本人所建，公共库全体可见，课程库限课程成员/任课教师。响应采用 2.4 分页结构。
+
+#### 17.2.3 知识库详情  🔒
+
+- **接口**：`GET /api/v1/kb/{id}`
+- **说明**：无访问权返回 1004；不存在返回 1005。
+
+#### 17.2.4 更新知识库  🔒
+
+- **接口**：`PUT /api/v1/kb/{id}`
+- **参数**：`kbName`、`description`、`status`；仅所有者或教务可操作，否则 1004。
+
+#### 17.2.5 删除知识库  🔒
+
+- **接口**：`DELETE /api/v1/kb/{id}`
+- **说明**：逻辑删除；库内仍有文档时返回 409，需先清空文档。删除流程由应用级联清理 Qdrant 向量与文档记录。
+
+### 17.3 文件存储（MinIO，Java 主服务签发）
+
+#### 17.3.1 申请预签名上传 URL  🔒
+
+- **接口**：`POST /api/v1/files/presign`
+- **说明**：后端不中转文件流；拿到 URL 后前端直接 `PUT` 到 MinIO。
+
+**请求参数**
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `fileName` | string | ✅ | 原始文件名 |
+| `fileType` | string | ✅ | 扩展名，如 pdf / docx / txt |
+| `bizType` | int | ✅ | 1 知识库文档，2 聊天媒体，3 头像，4 数字人资源，9 其他 |
+| `fileSize` | long | 否 | 文件大小（字节） |
+
+**响应 data**
+
+```json
+{
+  "fileId": "5001",
+  "bucketName": "documents",
+  "objectKey": "kb/2026/11/uuid-filename.pdf",
+  "uploadUrl": "https://minio.../presigned-put...",
+  "expiresIn": 600
+}
+```
+
+#### 17.3.2 上传完成确认  🔒
+
+- **接口**：`POST /api/v1/files/{id}/confirm`
+- **参数**：`fileHash`（可选，SHA-256）
+- **说明**：后端校验 MinIO 对象已存在，返回完整文件记录；未确认的对象可由定时清理任务回收。
+
+#### 17.3.3 申请预签名下载 URL  🔒
+
+- **接口**：`GET /api/v1/files/{id}/download-url`
+- **响应 data**：`{ "downloadUrl": "https://...", "expiresIn": 600 }`；不提供永久公开链接。
+
+#### 17.3.4 文件列表  🔒
+
+- **接口**：`GET /api/v1/files`
+- **Query**：`bizType`、`keyword`、`page`、`page_size`；仅返回本人上传或有权限的记录。
+
+### 17.4 知识库文档（Java 主服务）
+
+#### 17.4.1 挂载文档到知识库  🔒
+
+- **接口**：`POST /api/v1/kb/{kb_id}/documents`
+- **前提**：文件已通过 17.3 完成上传，持有 `fileId`。
+
+**请求参数**
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `fileId` | string | ✅ | file_record.id |
+| `docName` | string | ✅ | 文档名称 |
+| `docType` | int | ✅ | 1 教材 2 课件 3 题库 4 真题 5 补充 |
+| `chapterId` | string | 否 | 关联章节 |
+
+**响应 data**：文档对象，`ingestStatus=0`（待处理），`kbId` 自动绑定。
+
+#### 17.4.2 触发 RAG 入库  🔒
+
+- **接口**：`POST /api/v1/kb/documents/{document_id}/ingest`
+- **说明**：Java 校验权限后，在内部网络调 Python `17.6.4`；返回 `{ "taskId": "TASK...", "estimatedSeconds": 60 }`，进度沿用 4.9 查询。
+
+#### 17.4.3 文档列表  🔒
+
+- **接口**：`GET /api/v1/kb/{kb_id}/documents`
+- **Query**：`ingestStatus`、`docType`、`keyword`、`page`、`page_size`。
+
+#### 17.4.4 文档详情 / 删除  🔒
+
+- 详情：`GET /api/v1/kb/documents/{id}`
+- 删除：`DELETE /api/v1/kb/documents/{id}`，逻辑删除文档与切片记录，并通知 Python 清除对应 Qdrant 向量（按 document_id 的 payload 过滤）。
+
+### 17.5 AI 流式对话（Python 服务，经 Nginx）
+
+#### 17.5.1 流式对话  🔒 📌
+
+- **接口**：`POST /api/v1/ai/chat/sessions/{session_id}/stream`
+- **说明**：会话由 6.1 创建（v1.3 起 `POST /api/v1/chat/sessions` 增加 `kbId` 参数，其余不变）；Python 验 JWT 并查 Redis 黑名单，结束后自动回调 17.6.2 落库，前端无需单独调用落库接口。
+
+**请求参数**
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `content` | string | ✅ | 用户消息（语音时为 ASR 文本） |
+| `msgType` | int | ✅ | 1 文本 2 语音 3 图片 4 文件 |
+| `mediaUrl` | string | 否 | 媒体 URL |
+| `clientMsgId` | string | ✅ | 客户端幂等 ID |
+
+**SSE 事件流**（事件名沿用 6.2，字段对齐新数据模型）
+
+```
+event: start
+data: {"messageId": 9101}
+
+event: delta
+data: {"delta": "我们先来看这道题..."}
+
+event: citation
+data: {"docId": 1101, "page": 23, "snippet": "...", "vectorId": "uuid"}
+
+event: error
+data: {"code": 3001, "msg": "AI 调用失败，已切换兜底话术"}
+
+event: done
+data: {"messageId": 9101, "promptTokens": 320, "completionTokens": 580,
+       "totalTokens": 900, "modelName": "deepseek-v4-flash", "replyDurationMs": 4200}
+```
+
+错误约定：3001 调用失败触发兜底；3002 检索无结果退化为通用回答；1006 配额超限直接拒绝。
+
+### 17.6 内部接口（`/internal`，仅 Docker 内部网络 + `X-Internal-Token`）
+
+> 所有接口必须携带 `X-Internal-Token` 头，值由环境变量注入；外部经 Nginx 访问一律 404。
+
+#### 17.6.1 拉取会话上下文（Python → Java）
+
+- **接口**：`GET /internal/chat/sessions/{session_id}/context?userId={user_id}`
+- **说明**：Java 校验会话归属，不匹配返回 403。
+- **响应 data**：`{ "userId": 1001, "kbId": 7, "sceneType": 1, "messages": [ { "senderRole": 1, "msgType": 1, "content": "..." } ] }`
+
+#### 17.6.2 消息落库（Python → Java）
+
+- **接口**：`POST /internal/chat/messages`
+- **说明**：一次调用写入用户消息与 AI 回复两条 `chat_message`、更新会话计数，并写一条 `ai_usage_log`。
+
+**请求参数**
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `sessionId` | string | ✅ | 会话 ID |
+| `userMessage` | object | ✅ | `content`、`msgType`、`mediaUrl` |
+| `assistantMessage` | object | ✅ | `content`、`citedSources`、`replyDurationMs` |
+| `usage` | object | ✅ | `modelName`、`promptTokens`、`completionTokens`、`totalTokens`、`status`、`failReason` |
+
+#### 17.6.3 知识库访问校验（Python → Java）
+
+- **接口**：`GET /internal/kb/{kb_id}/access?userId={user_id}`
+- **响应 data**：`{ "allowed": true, "visibility": 2 }`；`allowed=false` 时 Python 终止检索。
+
+#### 17.6.4 触发文档入库（Java → Python）
+
+- **接口**：`POST /internal/ingest`
+- **参数**：`documentId`、`kbId`、`bucketName`、`objectKey`、`fileType`；Python 异步执行入库流水线。
+
+#### 17.6.5 入库结果回调（Python → Java）
+
+- **接口**：`PUT /internal/documents/{document_id}/ingest-callback`
+- **参数**：`ingestStatus`（2 成功 / 3 失败）、`ingestError`、`chunks`（每项含 `chunkIndex`、`content`、`contentSummary`、`sourcePage`、`tokenCount`、`vectorId`）
+- **说明**：Java 批量写 `knowledge_chunk`、更新文档状态与知识库 `docCount`。
+
+### 17.7 跨服务认证契约
+
+| 场景 | 凭证 | 约定 |
+| --- | --- | --- |
+| 外部用户请求 | `Authorization: Bearer {access_token}` | HS256；claims：`sub`（用户编号）、`userId`、`role`（1/2/3）、`tokenType`；Python 本地验签 |
+| 注销一致性 | — | Python 读 Redis `ai_tutor:auth:blacklist:{token}`，命中即拒绝 |
+| 服务间调用 | `X-Internal-Token` | 长随机串，环境变量注入，不入库 |
+
+### 17.8 与 v1.1 接口的替代关系
+
+| v1.1 接口 | v1.3 处理 |
+| --- | --- |
+| 4.7 文档上传（multipart 中转） | 由 17.3 预签名直传 + 17.4.1 挂载替代 |
+| 4.8 触发解析 | 由 17.4.2 替代，底层经 Python 执行 |
+| 4.9 任务进度查询 | 保留，继续复用 |
+| 6.1 创建会话 | 保留，新增 `kbId` 参数 |
+| 6.2 流式消息 | 由 17.5.1 替代，服务方改为 Python，SSE 事件名兼容 |
+| 16.2 通用文件上传 | 由 17.3 预签名流程替代 |
 
 ---
 
