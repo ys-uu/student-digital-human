@@ -1,9 +1,15 @@
 # ========= 本地开发配置模板 =========
-# 使用方法：复制此文件，重命名为 application-dev.yaml，修改为自己本地数据库信息
-# 使用方法：复制此文件，重命名为 application-dev.yaml，修改为自己本地数据库信息
-# 使用方法：复制此文件，重命名为 application-dev.yaml，修改为自己本地数据库信息
-# 使用方法：复制此文件，重命名为 application-dev.yaml，修改为自己本地数据库信息
-# 使用方法：复制此文件，重命名为 application-dev.yaml，修改为自己本地数据库信息
+# 使用方法：复制此文件，重命名为 application-dev.yaml，修改为自己的配置信息
+# 使用方法：复制此文件，重命名为 application-dev.yaml，修改为自己的配置信息
+# 使用方法：复制此文件，重命名为 application-dev.yaml，修改为自己的配置信息
+# 使用方法：复制此文件，重命名为 application-dev.yaml，修改为自己的配置信息
+
+
+# JWT 签名密钥（HS256，至少 32 字节）
+# 优先读取环境变量 JWT_SECRET；本地未设置时回退到默认值。
+# 生产/容器环境必须用环境变量注入强密钥，且 Java 与 Python 使用同一密钥。
+jwt:
+  secret: ${JWT_SECRET:aitutor-secret-key-minimum32chars-long-123456}
 
 spring:
   datasource:
@@ -32,8 +38,8 @@ aliyun:
     access-key-secret: 你的AccessKeySecret
     region-id: cn-hangzhou
     endpoint: dypnsapi.aliyuncs.com
-    sign-name: 你的签名名称
-    template-code: 你的模板编号
+    sign-name: 恒创联众
+    template-code: "100001"
 
 # 模拟扫码登录
 qr:

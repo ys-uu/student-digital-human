@@ -4,6 +4,8 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
@@ -13,9 +15,30 @@ import java.util.Date;
 @Component
 public class JwtUtil {
 
-    // 密钥至少32字符，生产环境请替换
-    private static final String SECRET_STR = "aitutor-secret-key-minimum32chars-long-123456";
-    private final SecretKey secretKey = Keys.hmacShaKeyFor(SECRET_STR.getBytes(StandardCharsets.UTF_8));
+    /** HS256 要求密钥至少 32 字节（256 bit） */
+    private static final int MIN_SECRET_BYTES = 32;
+
+    /**
+     * 签名密钥，从配置项 jwt.secret 注入。
+     * 该配置在 yaml 中通过占位符读取环境变量 JWT_SECRET，容器/生产环境由环境变量注入，
+     * 本地开发未设置环境变量时回退到默认值；Java 与 Python 必须使用同一密钥。
+     */
+    @Value("${jwt.secret}")
+    private String secretString;
+
+    private SecretKey secretKey;
+
+    @PostConstruct
+    public void init() {
+        byte[] keyBytes = secretString.getBytes(StandardCharsets.UTF_8);
+        if (keyBytes.length < MIN_SECRET_BYTES) {
+            throw new IllegalStateException(
+                    "JWT 密钥长度不足：HS256 要求至少 " + MIN_SECRET_BYTES
+                            + " 字节，当前为 " + keyBytes.length
+                            + " 字节，请通过环境变量 JWT_SECRET 配置足够长的密钥");
+        }
+        this.secretKey = Keys.hmacShaKeyFor(keyBytes);
+    }
 
     /** access token 有效期：2小时 */
     private static final long ACCESS_EXPIRATION = 2 * 60 * 60 * 1000L;
