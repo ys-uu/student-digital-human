@@ -12,6 +12,7 @@ import com.edu.aitutor.dto.SmsLoginDTO;
 import com.edu.aitutor.dto.UserUpdateDTO;
 import com.edu.aitutor.service.AuthService;
 import com.edu.aitutor.service.SmsService;
+import com.edu.aitutor.util.ClientIpUtil;
 import com.edu.aitutor.vo.SmsCodeVO;
 import com.edu.aitutor.vo.TokenVO;
 import com.edu.aitutor.vo.UserInfoVO;
@@ -47,13 +48,15 @@ public class AuthController {
     /** 3.1 账号密码登录 */
     @PostMapping("/auth/login")
     public Result<TokenVO> login(@Valid @RequestBody PasswordLoginDTO dto, HttpServletRequest request) {
-        return Result.success(authService.loginByPassword(dto, clientIp(request), request.getHeader("User-Agent")));
+        return Result.success(authService.loginByPassword(
+                dto, ClientIpUtil.resolve(request), request.getHeader("User-Agent")));
     }
 
     /** 注册（文档外新增），注册后自动登录 */
     @PostMapping("/auth/register")
     public Result<TokenVO> register(@Valid @RequestBody RegisterDTO dto, HttpServletRequest request) {
-        return Result.success(authService.register(dto, clientIp(request), request.getHeader("User-Agent")));
+        return Result.success(authService.register(
+                dto, ClientIpUtil.resolve(request), request.getHeader("User-Agent")));
     }
 
     /** 发送短信验证码（60s 频控） */
@@ -76,7 +79,8 @@ public class AuthController {
     /** 手机号验证码登录 */
     @PostMapping("/auth/sms/login")
     public Result<TokenVO> smsLogin(@Valid @RequestBody SmsLoginDTO dto, HttpServletRequest request) {
-        return Result.success(authService.loginBySms(dto, clientIp(request), request.getHeader("User-Agent")));
+        return Result.success(authService.loginBySms(
+                dto, ClientIpUtil.resolve(request), request.getHeader("User-Agent")));
     }
 
     /** 3.2 刷新令牌 */
@@ -110,13 +114,5 @@ public class AuthController {
     private String resolveToken(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
         return header != null && header.startsWith("Bearer ") ? header.substring(7) : null;
-    }
-
-    private String clientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
     }
 }

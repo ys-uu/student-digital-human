@@ -20,4 +20,27 @@ public final class RedisKeys {
 
     /** 用户权限码集合缓存，value 为权限码 JSON 数组，TTL 24h 兜底，角色/权限变更时按 userId 主动清除 */
     public static final String USER_PERMS = "ai_tutor:rbac:perms:%s";
+
+    // ==================== 反爬虫 / 风控 ====================
+
+    /** 接口滑动窗口限流，参数为规则名 + 客户端 IP，value 为 ZSET */
+    public static final String ANTI_RATE_LIMIT = "ai_tutor:anti:rate:%s:%s";
+
+    /** 触发反爬规则后的临时封禁标记，value 为封禁原因，TTL 即封禁时长 */
+    public static final String ANTI_BAN = "ai_tutor:anti:ban:%s";
+
+    /** 违规次数累加器，TTL 为违规统计窗口 */
+    public static final String ANTI_VIOLATION = "ai_tutor:anti:violation:%s";
+
+    /** 账号维度登录失败次数，TTL 为统计窗口 */
+    public static final String LOGIN_FAIL_ACCOUNT = "ai_tutor:auth:login:fail:account:%s";
+
+    /** IP 维度登录失败次数，TTL 为统计窗口 */
+    public static final String LOGIN_FAIL_IP = "ai_tutor:auth:login:fail:ip:%s";
+
+    /** 账号维度登录锁定标记，TTL 即锁定时长 */
+    public static final String LOGIN_LOCK_ACCOUNT = "ai_tutor:auth:login:lock:account:%s";
+
+    /** IP 维度登录锁定标记，TTL 即锁定时长 */
+    public static final String LOGIN_LOCK_IP = "ai_tutor:auth:login:lock:ip:%s";
 }

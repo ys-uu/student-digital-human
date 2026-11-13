@@ -25,6 +25,8 @@ public final class ErrorCode {
     public static final int SMS_CODE_ERROR = 1011;
     /** 账号已被禁用（补充） */
     public static final int ACCOUNT_DISABLED = 1012;
+    /** 触发反爬风控（可疑 UA、蜜罐路径、IP 封禁），HTTP 403（补充） */
+    public static final int ACCESS_BLOCKED = 1013;
 
     public static final int SYSTEM_ERROR = 9999;
 }

@@ -11,6 +11,7 @@ import com.edu.aitutor.entity.AuthLoginLog;
 import com.edu.aitutor.entity.User;
 import com.edu.aitutor.mapper.AuthLoginLogMapper;
 import com.edu.aitutor.mapper.UserMapper;
+import com.edu.aitutor.security.AntiCrawlerGuard;
 import com.edu.aitutor.security.RbacUserDetailsService;
 import com.edu.aitutor.service.AuthService;
 import com.edu.aitutor.service.SmsService;
@@ -51,11 +52,17 @@ public class AuthServiceImpl implements AuthService {
     private StringRedisTemplate redisTemplate;
     @Resource
     private RbacUserDetailsService rbacUserDetailsService;
+    @Resource
+    private AntiCrawlerGuard antiCrawlerGuard;
 
     @Override
     public TokenVO loginByPassword(PasswordLoginDTO dto, String ip, String userAgent) {
+        // 登录失败锁定：在查库、BCrypt 校验之前拦截撞库请求
+        antiCrawlerGuard.assertLoginAllowed(dto.getUsername(), ip);
+
         User user = userMapper.selectByUserNo(dto.getUsername());
         if (user == null) {
+            antiCrawlerGuard.recordLoginFailure(dto.getUsername(), ip);
             recordLog(null, dto.getUsername(), TYPE_STUDENT_PWD, 0, "账号不存在", dto.getDeviceId(), ip, userAgent);
             throw new BusinessException(ErrorCode.NOT_FOUND, "账号或密码错误");
         }
@@ -66,11 +73,14 @@ public class AuthServiceImpl implements AuthService {
         }
         if (user.getPasswordHash() == null
                 || !passwordEncoder.matches(dto.getPassword(), user.getPasswordHash())) {
+            antiCrawlerGuard.recordLoginFailure(dto.getUsername(), ip);
             recordLog(user.getId(), dto.getUsername(), passwordLoginType(user.getRole()), 0, "密码错误",
                     dto.getDeviceId(), ip, userAgent);
             throw new BusinessException(ErrorCode.NO_PERMISSION, "账号或密码错误");
         }
-        return afterLogin(user, passwordLoginType(user.getRole()), dto.getDeviceId(), ip, userAgent);
+        TokenVO token = afterLogin(user, passwordLoginType(user.getRole()), dto.getDeviceId(), ip, userAgent);
+        antiCrawlerGuard.clearLoginFailure(dto.getUsername());
+        return token;
     }
 
     @Override
@@ -101,8 +111,11 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public TokenVO loginBySms(SmsLoginDTO dto, String ip, String userAgent) {
         String phone = dto.getPhone();
+        // 验证码同样可被暴力猜测，纳入账号维度的失败锁定
+        antiCrawlerGuard.assertLoginAllowed(phone, ip);
         // 先校验验证码，再处理账号
         if (!smsService.checkVerifyCode(phone, dto.getVerifyCode())) {
+            antiCrawlerGuard.recordLoginFailure(phone, ip);
             recordLog(null, phone, TYPE_SMS, 0, "验证码错误或已过期", dto.getDeviceId(), ip, userAgent);
             throw new BusinessException(ErrorCode.SMS_CODE_ERROR, "验证码错误或已过期");
         }
@@ -126,7 +139,9 @@ public class AuthServiceImpl implements AuthService {
             recordLog(user.getId(), phone, TYPE_SMS, 0, "账号已禁用", dto.getDeviceId(), ip, userAgent);
             throw new BusinessException(ErrorCode.ACCOUNT_DISABLED, "账号已被禁用，请联系管理员");
         }
-        return afterLogin(user, TYPE_SMS, dto.getDeviceId(), ip, userAgent);
+        TokenVO token = afterLogin(user, TYPE_SMS, dto.getDeviceId(), ip, userAgent);
+        antiCrawlerGuard.clearLoginFailure(phone);
+        return token;
     }
 
     @Override
