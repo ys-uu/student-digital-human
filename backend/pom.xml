@@ -110,6 +110,13 @@
 			<artifactId>spring-security-crypto</artifactId>
 		</dependency>
 
+		<!-- MinIO 对象存储 SDK（S3 兼容，用于预签名 URL 与对象校验） -->
+		<dependency>
+			<groupId>io.minio</groupId>
+			<artifactId>minio</artifactId>
+			<version>8.5.17</version>
+		</dependency>
+
 		<!-- 阿里云号码认证服务（短信验证码）V1 SDK，坐标与版本经官方文档确认 -->
 		<dependency>
 			<groupId>com.aliyun</groupId>
