@@ -1,6 +1,8 @@
 package com.edu.aitutor.security;
 
-import com.edu.aitutor.config.AntiCrawlerProperties;
+import com.edu.aitutor.framework.security.AntiCrawlerFilter;
+import com.edu.aitutor.framework.security.AntiCrawlerGuard;
+import com.edu.aitutor.framework.config.AntiCrawlerProperties;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

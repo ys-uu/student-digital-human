@@ -1,5 +1,6 @@
 package com.edu.aitutor.util;
 
+import com.edu.aitutor.framework.web.ClientIpUtil;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 

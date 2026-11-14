@@ -1,5 +1,6 @@
 package com.edu.aitutor.util;
 
+import com.edu.aitutor.framework.jwt.JwtUtil;
 import io.jsonwebtoken.Claims;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
