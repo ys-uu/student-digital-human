@@ -24,6 +24,18 @@ spring:
       timeout: 3000ms
       lettuce:
         shutdown-timeout: 100ms
+  # RabbitMQ：数据大屏业务事件通知；容器已由 docker-compose 提供
+  rabbitmq:
+    host: ${RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:aitutor}
+    password: ${RABBITMQ_PASS:aitutor123}
+    virtual-host: /
+    connection-timeout: 3000ms
+    listener:
+      simple:
+        # 消费异常不无限重投，避免故障时刷屏
+        default-requeue-rejected: false
 
 cors:
   allow-origins: http://localhost:5173,http://localhost:5174
