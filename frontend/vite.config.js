@@ -21,6 +21,12 @@ export default defineConfig({
       '/qr': {
         target: 'http://localhost:8080',
         changeOrigin: true
+      },
+      // 数据大屏实时通道，需开启 ws 代理
+      '/ws': {
+        target: 'ws://localhost:8080',
+        ws: true,
+        changeOrigin: true
       }
     }
   }

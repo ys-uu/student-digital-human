@@ -28,6 +28,20 @@ const router = createRouter({
       meta: { roles: ['admin'], permissions: ['system:user:list'] }
     },
     {
+      path: '/admin/dashboard',
+      name: 'admin-dashboard',
+      component: () => import('@/views/admin/dashboard/index.vue'),
+      // 数据大屏：仅教务可访问
+      meta: { roles: ['admin'] }
+    },
+    {
+      path: '/teacher',
+      name: 'teacher',
+      component: () => import('@/views/teacher/index.vue'),
+      // 教师工作台：教师与教务均可访问，便于演示
+      meta: { roles: ['teacher', 'admin'] }
+    },
+    {
       path: '/student',
       name: 'student',
       component: () => import('@/views/student/index.vue'),

@@ -50,6 +50,11 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-websocket</artifactId>
 		</dependency>
+		<!-- RabbitMQ：数据大屏业务事件通知（教师动作即时驱动大屏刷新） -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-amqp</artifactId>
+		</dependency>
 
 		<!-- jdbc starter，提供DataSource自动装配（Boot4必须加） -->
 		<dependency>
