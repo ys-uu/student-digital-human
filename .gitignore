@@ -42,9 +42,9 @@ Thumbs.db
 .env.*.local
 
 # 后端本地私有配置（带数据库账号密码，不上传仓库）
-backend/src/main/resources/application-local.yml
-backend/src/main/resources/application-dev.yml
-backend/src/main/resources/application-prod.yml
+backend/src/main/resources/application-local.yaml
+backend/src/main/resources/application-dev.yaml
+backend/src/main/resources/application-prod.yaml
 
 # SQL备份文件
 *.sql.bak

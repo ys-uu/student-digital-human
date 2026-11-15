@@ -10,6 +10,8 @@ spring:
 mybatis:
   configuration:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    map-underscore-to-camel-case: true
+
 
 # 跨域允许源，多个地址逗号分隔
 cors:
