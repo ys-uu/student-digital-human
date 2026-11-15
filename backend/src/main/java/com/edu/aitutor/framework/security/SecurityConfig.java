@@ -48,6 +48,8 @@ public class SecurityConfig {
             "/qr/cancel",
             "/qr/mock-users",
             "/api/v1/health",
+            // WebSocket 握手走 HTTP GET，凭证在 query 参数中，由 WebSocketHandshakeInterceptor 校验
+            "/ws/**",
             "/error"
     };
 

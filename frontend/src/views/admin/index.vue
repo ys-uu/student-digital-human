@@ -13,10 +13,16 @@
       <el-button v-role="['admin']" type="danger">教务专属操作</el-button>
     </div>
 
+    <!-- 教学功能入口：教师/教务均可见，独立于原有按钮，不影响原有操作 -->
+    <div v-role="['teacher', 'admin']" class="btn-group">
+      <el-button type="primary" plain @click="router.push('/teacher')">课中随堂练习</el-button>
+    </div>
+
     <!-- 禅道风格授权管理入口，仅教务可见 -->
     <div v-role="['admin']" class="btn-group">
       <el-button type="primary" plain @click="router.push('/admin/role')">角色与权限管理</el-button>
       <el-button type="primary" plain @click="router.push('/admin/user')">用户角色分配</el-button>
+      <el-button type="success" @click="router.push('/admin/dashboard')">数据大屏</el-button>
     </div>
 
     <el-button class="logout-btn" @click="handleLogout">退出登录</el-button>
