@@ -61,9 +61,18 @@ function homePath(roleName) {
 
 router.beforeEach(async (to) => {
   const userStore = useUserStore()
-  // 未登录：白名单页面放行，其余跳登录（保留原有 token 白名单逻辑）
+  // 内存无 token：多为刷新页面，先凭 refresh cookie 尝试静默恢复
   if (!userStore.token) {
-    return whiteList.includes(to.path) ? true : '/login'
+    // 登录/注册等白名单页直接放行，不触发刷新
+    if (whiteList.includes(to.path)) {
+      return true
+    }
+    try {
+      await userStore.trySilentRefresh()
+    } catch (e) {
+      // cookie 缺失或失效，回登录页
+      return '/login'
+    }
   }
   // 已登录访问登录/注册页：直接进入对应主页
   if (whiteList.includes(to.path)) {

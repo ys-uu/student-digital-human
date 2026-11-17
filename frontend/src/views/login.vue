@@ -233,7 +233,6 @@ const pollQrStatus = async () => {
     stopPolling()
     clearInterval(qrCountdownTimer)
     userStore.token = d.token
-    userStore.refreshToken = ''
     const meRes = await getMe()
     if (meRes.code === 200) {
       userStore.userInfo = meRes.data

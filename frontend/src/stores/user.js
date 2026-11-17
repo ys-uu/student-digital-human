@@ -1,12 +1,11 @@
 import { defineStore } from 'pinia'
-import { logout as logoutApi, getMe } from '@/api/v1/auth'
+import { logout as logoutApi, getMe, refreshToken as refreshApi } from '@/api/v1/auth'
 
 export const useUserStore = defineStore('user', {
   state: () => ({
-    // access token
+    // access token 仅存内存，刷新页面后靠 refresh cookie 静默换新，不再持久化
     token: '',
-    refreshToken: '',
-    // 当前用户权限码集合（后端 /auth/me 与登录返回下发），随 persist 持久化
+    // 当前用户权限码集合
     permissions: [],
     userInfo: {}
   }),
@@ -24,10 +23,9 @@ export const useUserStore = defineStore('user', {
     }
   },
   actions: {
-    /** 登录成功后统一保存（后端 TokenVO 结构） */
+    /** 登录成功后统一保存（后端 TokenVO 结构，已不含 refreshToken） */
     setLogin(loginData) {
       this.token = loginData.accessToken
-      this.refreshToken = loginData.refreshToken
       this.userInfo = loginData.user || {}
       this.permissions = loginData.user?.permissions || []
     },
@@ -35,7 +33,24 @@ export const useUserStore = defineStore('user', {
       this.userInfo = info
       this.permissions = info?.permissions || []
     },
-    /** 拉取当前用户信息并同步权限（刷新 / 旧会话兜底） */
+    /**
+     * 凭 HttpOnly refresh cookie 静默换新 access token。
+     * 成功返回响应，失败抛错由调用方（路由守卫/拦截器）处理。
+     */
+    async trySilentRefresh() {
+      const res = await refreshApi()
+      if (res.code === 200) {
+        this.token = res.data.accessToken
+        // 刷新响应同样带 user，同步用户信息与权限
+        if (res.data.user) {
+          this.userInfo = res.data.user
+          this.permissions = res.data.user.permissions || []
+        }
+        return res
+      }
+      throw new Error('静默刷新失败')
+    },
+    /** 拉取当前用户信息并同步权限 */
     async fetchUserInfo() {
       const res = await getMe()
       if (res.code === 200) {
@@ -43,7 +58,7 @@ export const useUserStore = defineStore('user', {
       }
       return res
     },
-    /** 退出：通知后端拉黑 token，再清空本地 */
+    /** 退出：通知后端拉黑并清理白名单/cookie，再清空内存 */
     async logout() {
       try {
         if (this.token) {
@@ -56,10 +71,9 @@ export const useUserStore = defineStore('user', {
     },
     clear() {
       this.token = ''
-      this.refreshToken = ''
       this.permissions = []
       this.userInfo = {}
     }
-  },
-  persist: true
+  }
+  // 不再配置 persist，任何令牌都不写入 localStorage
 })

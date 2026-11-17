@@ -19,8 +19,14 @@ import com.edu.aitutor.module.user.vo.UserInfoVO;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import jakarta.annotation.Resource;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -36,7 +42,20 @@ public class AuthServiceImpl implements AuthService {
     private static final int TYPE_TEACHER_PWD = 2;
     private static final int TYPE_SMS = 3;
 
+    /** refresh token cookie 名称 */
+    private static final String REFRESH_COOKIE_NAME = "refresh_token";
+    /**
+     * 作用路径取认证模块前缀而非仅 /refresh：
+     * 登出接口 /auth/logout 也必须能读到该 cookie 才能删除白名单，
+     * 若限定到 /refresh，登出请求路径不匹配，浏览器不会携带，会导致吊销失效。
+     */
+    private static final String REFRESH_COOKIE_PATH = "/api/v1/auth";
+
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+
+    /** cookie Secure 开关：本地 HTTP 关闭，生产 HTTPS 开启，配置项 auth.refresh-cookie.secure */
+    @Value("${auth.refresh-cookie.secure:false}")
+    private boolean cookieSecure;
 
     @Resource
     private UserMapper userMapper;
@@ -54,7 +73,8 @@ public class AuthServiceImpl implements AuthService {
     private AntiCrawlerGuard antiCrawlerGuard;
 
     @Override
-    public TokenVO loginByPassword(PasswordLoginDTO dto, String ip, String userAgent) {
+    public TokenVO loginByPassword(PasswordLoginDTO dto, String ip, String userAgent,
+                                   HttpServletResponse response) {
         // 登录失败锁定：在查库、BCrypt 校验之前拦截撞库请求
         antiCrawlerGuard.assertLoginAllowed(dto.getUsername(), ip);
 
@@ -76,13 +96,15 @@ public class AuthServiceImpl implements AuthService {
                     dto.getDeviceId(), ip, userAgent);
             throw new BusinessException(ErrorCode.NO_PERMISSION, "账号或密码错误");
         }
-        TokenVO token = afterLogin(user, passwordLoginType(user.getRole()), dto.getDeviceId(), ip, userAgent);
+        TokenVO token = afterLogin(user, passwordLoginType(user.getRole()), dto.getDeviceId(),
+                ip, userAgent, response);
         antiCrawlerGuard.clearLoginFailure(dto.getUsername());
         return token;
     }
 
     @Override
-    public TokenVO register(RegisterDTO dto, String ip, String userAgent) {
+    public TokenVO register(RegisterDTO dto, String ip, String userAgent,
+                            HttpServletResponse response) {
         if (userMapper.selectByUserNo(dto.getUserNo()) != null) {
             throw new BusinessException(ErrorCode.NO_PERMISSION, "账号已存在");
         }
@@ -103,11 +125,12 @@ public class AuthServiceImpl implements AuthService {
 
         User saved = userMapper.selectById(user.getId());
         recordLog(saved.getId(), saved.getUserNo(), passwordLoginType(saved.getRole()), 1, null, null, ip, userAgent);
-        return buildTokenVO(saved);
+        return buildLoginTokenVO(saved, response);
     }
 
     @Override
-    public TokenVO loginBySms(SmsLoginDTO dto, String ip, String userAgent) {
+    public TokenVO loginBySms(SmsLoginDTO dto, String ip, String userAgent,
+                              HttpServletResponse response) {
         String phone = dto.getPhone();
         // 验证码同样可被暴力猜测，纳入账号维度的失败锁定
         antiCrawlerGuard.assertLoginAllowed(phone, ip);
@@ -137,19 +160,30 @@ public class AuthServiceImpl implements AuthService {
             recordLog(user.getId(), phone, TYPE_SMS, 0, "账号已禁用", dto.getDeviceId(), ip, userAgent);
             throw new BusinessException(ErrorCode.ACCOUNT_DISABLED, "账号已被禁用，请联系管理员");
         }
-        TokenVO token = afterLogin(user, TYPE_SMS, dto.getDeviceId(), ip, userAgent);
+        TokenVO token = afterLogin(user, TYPE_SMS, dto.getDeviceId(), ip, userAgent, response);
         antiCrawlerGuard.clearLoginFailure(phone);
         return token;
     }
 
     @Override
-    public TokenVO refresh(String refreshToken) {
+    public TokenVO refresh(HttpServletRequest request) {
+        String refreshToken = resolveRefreshCookie(request);
+        if (refreshToken == null) {
+            throw new BusinessException(ErrorCode.TOKEN_INVALID, "未找到刷新凭证，请重新登录");
+        }
         try {
             Claims claims = jwtUtil.parseToken(refreshToken);
             if (!JwtUtil.TYPE_REFRESH.equals(claims.get("tokenType"))) {
                 throw new BusinessException(ErrorCode.TOKEN_INVALID, "refreshToken 类型无效");
             }
+            String jti = claims.getId();
             Long userId = Long.valueOf(claims.get("userId").toString());
+            // 白名单校验：键必须存在，且归属与令牌中的 userId 一致
+            String storedUserId = redisTemplate.opsForValue()
+                    .get(String.format(RedisKeys.REFRESH_WHITELIST, jti));
+            if (storedUserId == null || !storedUserId.equals(userId.toString())) {
+                throw new BusinessException(ErrorCode.TOKEN_INVALID, "登录凭证已失效，请重新登录");
+            }
             User user = userMapper.selectById(userId);
             if (user == null) {
                 throw new BusinessException(ErrorCode.NOT_FOUND, "用户不存在");
@@ -157,7 +191,8 @@ public class AuthServiceImpl implements AuthService {
             if (user.getStatus() != null && user.getStatus() == 0) {
                 throw new BusinessException(ErrorCode.ACCOUNT_DISABLED, "账号已被禁用");
             }
-            return buildTokenVO(user);
+            // 本期不旋转：仅签发新 access token，refresh cookie 保持不变
+            return buildRefreshTokenVO(user);
         } catch (ExpiredJwtException e) {
             throw new BusinessException(ErrorCode.TOKEN_EXPIRED, "登录已过期，请重新登录");
         } catch (BusinessException e) {
@@ -178,7 +213,8 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public void logout(String token) {
+    public void logout(String token, HttpServletRequest request, HttpServletResponse response) {
+        // 1 access token 加黑名单（现有逻辑），TTL 为剩余有效期
         try {
             long remain = jwtUtil.getRemainingExpirationMillis(token);
             if (remain > 0) {
@@ -187,8 +223,25 @@ public class AuthServiceImpl implements AuthService {
             }
         } catch (Exception e) {
             // token 已失效则无需拉黑
-            log.warn("退出登录拉黑跳过: {}", e.getMessage());
+            log.warn("退出登录 access 拉黑跳过: {}", e.getMessage());
         }
+        // 2 删除 refresh 白名单，并从用户 jti 集合移除
+        try {
+            String refreshToken = resolveRefreshCookie(request);
+            if (refreshToken != null) {
+                Claims claims = jwtUtil.parseToken(refreshToken);
+                String jti = claims.getId();
+                Long userId = Long.valueOf(claims.get("userId").toString());
+                redisTemplate.delete(String.format(RedisKeys.REFRESH_WHITELIST, jti));
+                redisTemplate.opsForSet()
+                        .remove(String.format(RedisKeys.REFRESH_USER_SET, userId), jti);
+            }
+        } catch (Exception e) {
+            // cookie 缺失或已过期，跳过白名单清理
+            log.warn("退出登录 refresh 白名单清理跳过: {}", e.getMessage());
+        }
+        // 3 下发 maxAge=0 的过期 cookie，清除浏览器凭证
+        writeRefreshCookie(response, "", Duration.ZERO);
     }
 
     @Override
@@ -222,25 +275,91 @@ public class AuthServiceImpl implements AuthService {
 
     // ==================== 私有辅助 ====================
 
-    /** 登录成功后的统一收尾：更新登录信息、写审计、签发令牌 */
-    private TokenVO afterLogin(User user, int loginType, String deviceId, String ip, String userAgent) {
+    /** 登录成功后的统一收尾：更新登录信息、写审计、签发令牌与 cookie */
+    private TokenVO afterLogin(User user, int loginType, String deviceId, String ip,
+                               String userAgent, HttpServletResponse response) {
         User update = new User();
         update.setId(user.getId());
         update.setLastLoginAt(LocalDateTime.now());
         update.setLastLoginIp(ip);
         userMapper.updateLoginInfo(update);
         recordLog(user.getId(), user.getUserNo(), loginType, 1, null, deviceId, ip, userAgent);
-        return buildTokenVO(user);
+        return buildLoginTokenVO(user, response);
     }
 
-    private TokenVO buildTokenVO(User user) {
+    /**
+     * 登录类响应：生成双 token、维护 refresh 白名单与用户 jti 集合、下发 cookie。
+     */
+    private TokenVO buildLoginTokenVO(User user, HttpServletResponse response) {
+        String accessToken = jwtUtil.generateAccessToken(
+                user.getId(), user.getUserNo(), user.getRole());
+        String refreshToken = jwtUtil.generateRefreshToken(
+                user.getId(), user.getUserNo(), user.getRole());
+        // 从生成的 refresh token 中取回 jti
+        String jti = jwtUtil.parseToken(refreshToken).getId();
+
+        // 白名单 String：jti -> userId，TTL 与 refresh 有效期一致（7 天）
+        redisTemplate.opsForValue().set(
+                String.format(RedisKeys.REFRESH_WHITELIST, jti),
+                user.getId().toString(), Duration.ofDays(7));
+        // 用户 jti 集合：支撑登出清理与未来全设备下线，TTL 7 天兜底
+        String userSetKey = String.format(RedisKeys.REFRESH_USER_SET, user.getId());
+        redisTemplate.opsForSet().add(userSetKey, jti);
+        redisTemplate.expire(userSetKey, Duration.ofDays(7));
+
+        // HttpOnly cookie 下发，JS 无法读取
+        writeRefreshCookie(response, refreshToken, Duration.ofDays(7));
+
         TokenVO vo = new TokenVO();
-        vo.setAccessToken(jwtUtil.generateAccessToken(user.getId(), user.getUserNo(), user.getRole()));
-        vo.setRefreshToken(jwtUtil.generateRefreshToken(user.getId(), user.getUserNo(), user.getRole()));
+        vo.setAccessToken(accessToken);
         vo.setExpiresIn(jwtUtil.getAccessExpirationSeconds());
         vo.setTokenType("Bearer");
         vo.setUser(buildUserInfoVO(user));
         return vo;
+    }
+
+    /**
+     * 刷新类响应（本期不旋转）：仅签发新的 access token，响应仍带用户信息。
+     */
+    private TokenVO buildRefreshTokenVO(User user) {
+        TokenVO vo = new TokenVO();
+        vo.setAccessToken(jwtUtil.generateAccessToken(
+                user.getId(), user.getUserNo(), user.getRole()));
+        vo.setExpiresIn(jwtUtil.getAccessExpirationSeconds());
+        vo.setTokenType("Bearer");
+        vo.setUser(buildUserInfoVO(user));
+        return vo;
+    }
+
+    /**
+     * 下发 refresh cookie。maxAge 为 0 时即清除浏览器凭证。
+     */
+    private void writeRefreshCookie(HttpServletResponse response, String token, Duration maxAge) {
+        ResponseCookie cookie = ResponseCookie.from(REFRESH_COOKIE_NAME, token)
+                .httpOnly(true)
+                .path(REFRESH_COOKIE_PATH)
+                // 跨站不携带，缓解 CSRF
+                .sameSite("Strict")
+                .secure(cookieSecure)
+                .maxAge(maxAge)
+                .build();
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+    }
+
+    /**
+     * 从请求 cookie 中读取 refresh token，不存在返回 null。
+     */
+    private String resolveRefreshCookie(HttpServletRequest request) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) {
+            return null;
+        }
+        for (Cookie cookie : cookies) {
+            if (REFRESH_COOKIE_NAME.equals(cookie.getName())) {
+                return cookie.getValue();
+            }
+        }
+        return null;
     }
 
     /**
@@ -271,7 +390,7 @@ public class AuthServiceImpl implements AuthService {
         authLoginLogMapper.insert(entity);
     }
 
-    private String blankToNull(String s) {
+    private static String blankToNull(String s) {
         return s == null || s.trim().isEmpty() ? null : s.trim();
     }
 }

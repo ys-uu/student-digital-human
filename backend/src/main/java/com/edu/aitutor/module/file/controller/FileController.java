@@ -9,6 +9,7 @@ import com.edu.aitutor.module.file.vo.DownloadUrlVO;
 import com.edu.aitutor.module.file.vo.PresignVO;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,8 +20,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 文件存储接口：预签名直传、上传确认、预签名下载、文件列表，对齐接口文档 17.3。
- * 均需登录，文件归属由服务层按当前用户校验。
+ * 类级显式声明必须登录；文件归属由服务层按当前用户校验，防水平越权。
  */
+@PreAuthorize("isAuthenticated()")
 @RestController
 @RequestMapping("/api/v1/files")
 public class FileController {

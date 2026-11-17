@@ -9,7 +9,7 @@
 # 优先读取环境变量 JWT_SECRET；本地未设置时回退到默认值。
 # 生产/容器环境必须用环境变量注入强密钥，且 Java 与 Python 使用同一密钥。
 jwt:
-  secret: ${JWT_SECRET:aitutor-secret-key-minimum32chars-long-123456}
+  secret: ${JWT_SECRET}
 
 spring:
   datasource:
@@ -39,6 +39,11 @@ spring:
 
 cors:
   allow-origins: http://localhost:5173,http://localhost:5174
+
+# refresh token cookie 安全开关：本地 HTTP 必须为 false，生产 HTTPS 环境改为 true
+auth:
+  refresh-cookie:
+    secure: false
 
 # MinIO 对象存储；凭证优先读环境变量，本地未设置时回退到开发默认值
 minio:
