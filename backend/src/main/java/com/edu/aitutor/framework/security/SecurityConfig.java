@@ -70,6 +70,19 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(WHITE_LIST).permitAll()
                         .anyRequest().authenticated())
+                .headers(headers -> headers
+                        // 防点击劫持，等价 X-Frame-Options: DENY
+                        .frameOptions(frame -> frame.deny())
+                        // 禁止 MIME 嗅探，等价 X-Content-Type-Options: nosniff
+                        .contentTypeOptions(opts -> {})
+                        // HSTS 留待 HTTPS 阶段开启，当前显式关闭
+                        .httpStrictTransportSecurity(hsts -> hsts.disable())
+                        // 限制浏览器敏感能力：本系统不使用摄像头、麦克风、定位
+                        // permissionsPolicy 自 6.4 起废弃并将移除，改用 permissionsPolicyHeader
+                        // （返回 HeadersConfigurer，写法与其他安全头一致）
+                        .permissionsPolicyHeader(pp -> pp.policy(
+                                "camera=(), microphone=(), geolocation=()"))
+                )
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))

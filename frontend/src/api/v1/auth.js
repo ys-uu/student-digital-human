@@ -20,9 +20,10 @@ export function loginBySms(data) {
   return request.post('/api/v1/auth/sms/login', data)
 }
 
-// 3.2 刷新令牌
-export function refreshToken(refreshToken) {
-  return request.post('/api/v1/auth/refresh', { refreshToken })
+// 3.2 刷新令牌：无请求体，refresh token 由 HttpOnly cookie 自动携带
+// _isRefresh 标记供响应拦截器识别，刷新接口自身 401 时不再递归刷新
+export function refreshToken() {
+  return request.post('/api/v1/auth/refresh', null, { _isRefresh: true })
 }
 
 // 3.4 当前登录用户信息

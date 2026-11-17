@@ -22,8 +22,9 @@ public class TeacherController {
 
     /**
      * 一键布置随堂练习，成功后教务大屏会在下一次推送中呈现。
+     * 按权限码鉴权：教师需持有 homework:create，教务靠通配码 *:* 自动放行。
      */
-    @PreAuthorize("@ss.hasRole('teacher') or @ss.hasRole('admin')")
+    @PreAuthorize("@ss.hasPerm('homework:create')")
     @PostMapping("/homework/quick")
     public Result<Map<String, Object>> quickHomework() {
         return Result.success(teacherWorkbenchService.publishQuickHomework());

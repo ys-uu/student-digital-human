@@ -11,8 +11,6 @@ public class TokenVO {
 
     private String accessToken;
 
-    private String refreshToken;
-
     /** access token 有效期（秒） */
     private Long expiresIn;
 
