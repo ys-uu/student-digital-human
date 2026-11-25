@@ -1,13 +1,13 @@
 # ============================================================
-# 本项目本地开发容器编排（v1.3）
-# 中间件：MySQL + Redis + MinIO + Qdrant + Embedding(Infinity) + RabbitMQ + Nginx
+# 本项目本地开发容器编排（v1.4）
+# 中间件：MySQL + MongoDB + Redis + MinIO + Qdrant + Embedding(Infinity) + RabbitMQ + Nginx
 # 启动：在本文件所在目录执行 docker compose up -d
 # 停止：docker compose down（需同时清空数据卷才加 -v，请勿随意使用）
 # 说明：应用服务（Java backend、Python ai-service）容器化后再纳入本文件，
 #       当前 Nginx 已按服务名预留路由，应用未启动时对应路径返回 502 属正常。
 # ============================================================
 services:
-  # -------- 数据库 --------
+  # -------- 关系型数据库：账号、课程、班级等强关系数据 --------
   mysql:
     image: mysql:8.0
     container_name: aitutor-mysql
@@ -31,6 +31,35 @@ services:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p123456"]
       interval: 5s
       timeout: 3s
+      retries: 10
+    networks:
+      - aitutor-net
+
+  # -------- 文档型数据库：私信消息（含图片/音频/文件等媒体元数据） --------
+  # 选型理由：
+  #   1) 消息体结构随类型变化（文本/图片/文件/音频字段差异大），文档模型天然适配，
+  #      无需像 MySQL 那样加一堆可为空的列；
+  #   2) 单会话内按 seq 顺序追加、按区间查询，MongoDB 的复合索引完全胜任；
+  #   3) 消息量随时间线性增长，MongoDB 水平分片比 MySQL 分库分表更简单。
+  # 注意：媒体文件本体不放这里，仍存 MinIO；本库只存 URL 与元数据（行业标准做法）。
+  mongo:
+    image: mongo:7
+    container_name: aitutor-mongo
+    restart: unless-stopped
+    ports:
+      # 宿主 27017 若被占用可改左侧端口，后端 mongo.port 同步即可
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "root"
+      MONGO_INITDB_ROOT_PASSWORD: "123456"
+      TZ: Asia/Shanghai
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      # 带认证的 ping，确保容器真正可服务而不只是进程活着
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
       retries: 10
     networks:
       - aitutor-net
@@ -133,7 +162,7 @@ services:
       - "8081:7997"
     environment:
       # 模型首次下载走国内 HuggingFace 镜像，避免直连失败
-      HF_ENDPOINT: "https://hf-mirror.com"
+      HF_ENDPOINT: "https://huggingface.co"
       TZ: Asia/Shanghai
     command: ["v2", "--model-id", "BAAI/bge-small-zh-v1.5", "--port", "7997"]
     volumes:
@@ -191,6 +220,7 @@ services:
 # -------- 数据卷 --------
 volumes:
   mysql-data:
+  mongo-data:
   redis-data:
   minio-data:
   qdrant-data:

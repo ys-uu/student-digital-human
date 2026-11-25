@@ -28,5 +28,14 @@ public final class ErrorCode {
     /** 触发反爬风控（可疑 UA、蜜罐路径、IP 封禁），HTTP 403（补充） */
     public static final int ACCESS_BLOCKED = 1013;
 
+    /** WebSocket 连接未认证：token 缺失或无效（v1.7 补充，对齐接口文档 18.6） */
+    public static final int WS_UNAUTHORIZED = 1014;
+    /** 无权与该用户私信：非同一课程的师生关系（v1.7 补充） */
+    public static final int PRIVATE_FORBIDDEN = 1015;
+    /** 教师之间不允许私信（v1.7 补充） */
+    public static final int TEACHER_TO_TEACHER_DENIED = 1016;
+    /** 管理员不参与私信，请使用系统通知（v1.7 补充） */
+    public static final int ADMIN_CHAT_DENIED = 1017;
+
     public static final int SYSTEM_ERROR = 9999;
 }

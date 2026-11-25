@@ -47,6 +47,13 @@ const router = createRouter({
       component: () => import('@/views/student/index.vue'),
       meta: { roles: ['student'] }
     },
+    {
+      path: '/chat',
+      name: 'chat',
+      component: () => import('@/views/chat/index.vue'),
+      // 私信：学生与教师可用；管理员不参与私信（接口层返回 1017），故不开放
+      meta: { roles: ['student', 'teacher'] }
+    },
     { path: '/', redirect: '/login' }
   ]
 })
@@ -61,23 +68,25 @@ function homePath(roleName) {
 
 router.beforeEach(async (to) => {
   const userStore = useUserStore()
-  // 内存无 token：多为刷新页面，先凭 refresh cookie 尝试静默恢复
+
+  // 内存中没有 access token 时，先尝试凭 HttpOnly refresh cookie 静默换新。
+  // 原因：access token 只存 Pinia 内存、不落 localStorage（见 stores/user.js），
+  // 刷新页面后内存被清空，若不先恢复登录态就会误判为"未登录"而跳转登录页。
+  // 静默刷新失败（cookie 不存在/已过期）才视为真正未登录。
   if (!userStore.token) {
-    // 登录/注册等白名单页直接放行，不触发刷新
-    if (whiteList.includes(to.path)) {
-      return true
-    }
     try {
       await userStore.trySilentRefresh()
     } catch (e) {
-      // cookie 缺失或失效，回登录页
-      return '/login'
+      // 换新失败：白名单页面放行，其余跳登录
+      return whiteList.includes(to.path) ? true : '/login'
     }
   }
+
   // 已登录访问登录/注册页：直接进入对应主页
   if (whiteList.includes(to.path)) {
     return homePath(userStore.roleName)
   }
+
   // 刷新或旧会话导致权限为空时，先拉取 /auth/me 补全，失败则回登录页
   if (!userStore.permissions || userStore.permissions.length === 0) {
     try {

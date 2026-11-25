@@ -49,4 +49,25 @@ public final class RedisKeys {
 
     /** IP 维度登录锁定标记，TTL 即锁定时长 */
     public static final String LOGIN_LOCK_IP = "ai_tutor:auth:login:lock:ip:%s";
+
+    // ==================== 私信实时通道（v1.7） ====================
+
+    /**
+     * 用户在线连接集合，value 为 Set（本实例的 WebSocket sessionId），TTL 60s 续期。
+     * 心跳每 30s 刷新一次；进程异常退出时由 TTL 自然过期，避免残留"假在线"。
+     */
+    public static final String WS_ONLINE = "ai_tutor:ws:online:%s";
+
+    /**
+     * 私信推送广播频道（Redis Pub/Sub）。
+     * 单实例部署时本实例既发布又订阅，收到自己发布的消息需去重；
+     * 多实例部署时保证跨实例投递可达。
+     */
+    public static final String WS_PRIVATE_CHANNEL = "ai_tutor:ws:private";
+
+    /**
+     * 离线同步游标：记录某用户已确认同步到的最大消息ID。
+     * 客户端重连时优先携带本地游标，未携带时回退到该键值。
+     */
+    public static final String WS_SYNC_CURSOR = "ai_tutor:ws:sync:%s";
 }

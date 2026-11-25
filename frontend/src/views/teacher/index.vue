@@ -18,7 +18,7 @@
           点击后系统会为你的课程创建一份随堂练习。教务数据大屏将在 3 秒内刷新
           「今日布置作业」指标，并在实时动态中显示这条记录。
         </p>
-        <button v-role="['teacher','admin']" class="publish" :disabled="submitting" @click="publish">
+        <button class="publish" :disabled="submitting" @click="publish">
           {{ submitting ? '布置中...' : '布置随堂练习' }}
         </button>
         <p v-if="lastResult" class="result">
@@ -74,9 +74,7 @@ async function publish() {
       ElMessage.error(res.msg || '布置失败')
     }
   } catch (e) {
-    // 优先展示后端返回的拒绝原因（如 403：权限不足，禁止访问），无响应体再兜底
-    const msg = e?.response?.data?.msg || '布置失败，请检查后端服务'
-    ElMessage.error(msg)
+    ElMessage.error('布置失败，请检查后端服务')
   } finally {
     submitting.value = false
   }
