@@ -294,3 +294,114 @@ code {
     border-right-color: var(--border);
   }
 }
+
+/* ================= 浅色主题变量 ================= */
+:root {
+  --bg: #f4f7fc;
+  --bg-image: none;
+  --surface: #ffffff;
+  --surface-2: #f7f9fd;
+  --border: #e3e9f4;
+  --text: #1b2540;
+  --muted: #6c7893;
+  --accent: #2f6fed;
+  --accent-2: #14b8c4;
+  --accent-soft: #e8f0ff;
+  --on-accent: #ffffff;
+  --shadow: 0 6px 18px rgba(30, 58, 110, .06);
+  --shadow-hover: 0 16px 34px rgba(30, 58, 110, .13);
+  --radius: 14px;
+  --sidebar: #ffffff;
+  --font-head: "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+body.theme-paper {
+  --bg: #faf6ee;
+  --bg-image: radial-gradient(900px 500px at 80% 0%, #fff4e2 0%, transparent 60%);
+  --surface: #fffdf9;
+  --surface-2: #f8f1e6;
+  --border: #ecdfcb;
+  --text: #3b2f24;
+  --muted: #8b7a66;
+  --accent: #c2703a;
+  --accent-2: #d99a4e;
+  --accent-soft: #f8ecdd;
+  --on-accent: #fffaf4;
+  --shadow: 0 6px 18px rgba(120, 86, 50, .08);
+  --shadow-hover: 0 16px 34px rgba(120, 86, 50, .16);
+  --radius: 14px;
+  --sidebar: #fffdf8;
+  --font-head: Georgia, "Songti SC", "SimSun", serif;
+}
+
+body.theme-minimal {
+  --bg: #ffffff;
+  --bg-image: none;
+  --surface: #ffffff;
+  --surface-2: #f6f6f7;
+  --border: #e8e8ea;
+  --text: #111114;
+  --muted: #74747c;
+  --accent: #4f46e5;
+  --accent-2: #4f46e5;
+  --accent-soft: #f0efff;
+  --on-accent: #ffffff;
+  --shadow: none;
+  --shadow-hover: 0 10px 26px rgba(17, 17, 20, .10);
+  --radius: 10px;
+  --sidebar: #fcfcfd;
+  --font-head: "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+body.theme-soft {
+  --bg: #eef1fb;
+  --bg-image:
+    radial-gradient(900px 520px at 12% 0%, #e6e9ff 0%, transparent 60%),
+    radial-gradient(800px 500px at 90% 10%, #e6fbff 0%, transparent 55%),
+    radial-gradient(700px 500px at 60% 100%, #fdeaf8 0%, transparent 60%);
+  --surface: rgba(255, 255, 255, .72);
+  --surface-2: rgba(255, 255, 255, .55);
+  --border: rgba(255, 255, 255, .9);
+  --text: #221c4a;
+  --muted: #6b6f8e;
+  --accent: #7c5cff;
+  --accent-2: #06b6d4;
+  --accent-soft: #efeaff;
+  --on-accent: #ffffff;
+  --shadow: 0 10px 28px rgba(99, 102, 241, .10);
+  --shadow-hover: 0 20px 44px rgba(99, 102, 241, .18);
+  --radius: 18px;
+  --sidebar: rgba(255, 255, 255, .66);
+  --font-head: "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+body.theme-soft .side,
+body.theme-soft .card,
+body.theme-soft .stat,
+body.theme-soft .panel { backdrop-filter: blur(14px); }
+body.theme-soft .side { border-right-color: rgba(255, 255, 255, .8); }
+
+
+/* 标题色与浅色配色（覆盖模板深色模式） */
+html, body { color-scheme: light; }
+:root { --text-h: #1b2540; }
+body.theme-paper { --text-h: #3b2f24; }
+body.theme-minimal { --text-h: #111114; }
+body.theme-soft { --text-h: #221c4a; }
+h1, h2 { color: var(--text-h); }
+
+
+/* ==== 应用外壳：全屏、左对齐（覆盖模板默认样式） ==== */
+html, body { color-scheme: light; }
+#app {
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  border: 0;
+  text-align: left;
+}
+body { margin: 0; background: var(--bg); }
+:root { --text-h: #1b2540; }
+body.theme-paper { --text-h: #3b2f24; }
+body.theme-minimal { --text-h: #111114; }
+body.theme-soft { --text-h: #221c4a; }
+h1, h2 { color: var(--text-h); }

@@ -1,10 +1,12 @@
 # 大学生辅助学习 AI 数字人系统 — API 接口文档
 
-> **文档版本**：v1.2（精简版）  
-> **编写日期**：2026-09-22（v1.2 修订：2026-11-09）  
+> **文档版本**：v1.8（精简版）  
+> **编写日期**：2026-09-22（v1.2 修订：2026-11-09；v1.7 增补：2026-11-21；v1.8 增补：2026-11-22）  
 > **适用产品**：大学生辅助学习 AI 数字人系统（MVP 及后续迭代版本）  
 > **对接对象**：Web 前端（H5 / PC）、移动端 H5、第三方校园系统  
-> **接口总数**：86 个（v1.1 为 77 个，v1.2 新增扫码登录接口组 6 个、注册与短信登录接口 3 个）
+> **接口总数**：96 个（v1.1 为 77 个；v1.2 新增扫码登录接口组 6 个、注册与短信登录接口 3 个；v1.7 新增第 18 章 WebSocket 1对1实时对话 9 个；v1.8 新增第 19 章区间补洞 1 个）  
+> **v1.7 说明**：本期只实现 WebSocket 1对1实时对话（学生↔学生、学生↔教师）与系统通知推送；**AI 数字人流式对话（第 6 章 / 17.5.1 的 SSE 通道）本期不实现，另行排期**。  
+> **v1.8 说明**：引入会话级消息序号 `seq` 与消息三态回执（发送中 / 已送达 / 已读），游标体系由 `id` 迁移至 `seq`，新增 `private_delivered`、`private_resync` 两种报文，详见第 19 章。
 
 ---
 
@@ -27,6 +29,8 @@
 15. [AI 能力接口](#15-ai-能力接口)
 16. [附录](#16-附录)
 17. [v1.3 架构扩展接口（服务拆分与 RAG）](#17-v13-架构扩展接口服务拆分与-rag)
+18. [v1.7 WebSocket 1对1实时对话（教师验收版本）](#18-v17-websocket-1对1实时对话教师验收版本)
+19. [v1.8 增补：会话级消息序号 seq 与三态回执](#19-v18-增补会话级消息序号-seq-与三态回执)
 
 ---
 
@@ -172,6 +176,10 @@ v1.1 版本以功能需求表（FR-01~FR-10）为准绳做了**瘦身**：每个
 | 1011 | 短信验证码错误或已过期 | 重新获取验证码 |
 | 1012 | 账号已被禁用 | 提示用户联系管理员 |
 | 1013 | 触发反爬风控（可疑 UA、蜜罐路径、IP 封禁） | 停止自动化请求，稍后重试或联系管理员（v1.4 新增） |
+| 1014 | WebSocket 连接未认证（token 缺失或无效） | 重新登录后重连（v1.7 新增，见 18.6） |
+| 1015 | 无权与该用户私信（非同一课程师生） | 提示用户，不重试（v1.7 新增） |
+| 1016 | 教师之间不允许私信 | 提示用户，不重试（v1.7 新增） |
+| 1017 | 管理员不参与私信，请使用系统通知 | 提示用户，不重试（v1.7 新增） |
 | 2001 | 课程未开通 | 引导开通 |
 | 2003 | 作业已截止 | 提示截止 |
 | 2004 | 错题已解决 | 不再展示 |
@@ -1863,6 +1871,503 @@ data: {"messageId": 9101, "promptTokens": 320, "completionTokens": 580,
 
 ---
 
+## 18. v1.7 WebSocket 1对1实时对话（教师验收版本）
+
+> **对接表**：`private_conversation`（表36）、`private_message`（表37）
+> **服务归属**：Java 主服务（Spring `spring-boot-starter-websocket`），不依赖 Python AI 服务
+> **本期范围**：学生 ↔ 学生、学生 ↔ 教师 的 1对1实时对话
+> **明确不在本期**：AI 数字人对话（第 6 章 / 17.5.1 的 SSE 流式通道）本期不实现，另行排期
+
+### 18.1 设计说明与范围边界
+
+| 项 | 本期处理 | 说明 |
+| --- | --- | --- |
+| 1对1私信 | ✅ 实现 | 学生之间自由私信；学生与“同一课程”的教师之间私信 |
+| 教师 ↔ 教师 | ❌ 不开放 | 返回 `1016` |
+| 管理员 ↔ 任何人 | ❌ 不开放 | 返回 `1017`，管理员仅通过系统通知触达 |
+| 群聊 / 好友 / 撤回 / 语音 | ❌ 不在本期 | 表结构预留 `recall_status`、`report_status`，便于后续扩展 |
+| AI 数字人对话（SSE） | ⏸ 本期搁置 | 见第 6 章与 17.5.1，本期不实现、不接入 |
+
+**通道分工（本期只落地 WebSocket 一条）**
+
+| 通道 | 用途 | 本期状态 |
+| --- | --- | --- |
+| WebSocket `/ws/private` | 1对1实时对话 + 系统通知推送 | ✅ **本期实现（核心）** |
+| WebSocket `/ws/dashboard` | 教务数据大屏推送 | ✅ 沿用，不修改 |
+| SSE `/api/v1/ai/chat/sessions/{id}/stream` | AI 数字人流式答疑 | ⏸ 本期不实现 |
+| WebSocket `/ws/chat` | 旧版回显骨架 | 🗑 删除（无业务逻辑，与 17.5.1 冲突） |
+
+**师生关系判定口径**：存在一门 `course`，满足 `course.teacher_id = 教师`、`course.is_deleted = 0`、`course.status = 1`，且学生在 `class_member` 中属于 `course.class_id` 对应班级（`member_type = 1`）。即**同老师 + 同课程**才构成师生关系。
+
+---
+
+### 18.2 连接与鉴权
+
+- **端点**：`{ws|wss}://{host}/ws/private?token={access_token}`
+- **鉴权**：沿用 `WebSocketHandshakeInterceptor`，从 query 参数读取 JWT 并校验签名与有效期；校验通过后把 `userId` 写入会话 attributes。
+- **失败处理**：token 缺失或无效时握手失败（HTTP 403），不建立连接。
+- **安全边界**：Spring Security 已将 `/ws/**` 加入免鉴权白名单，鉴权完全由握手拦截器负责；**服务端推送前必须再次校验消息接收方与发送方的私信权限，不得信任客户端传入的身份字段**。
+
+**心跳约定**
+
+| 项 | 约定 |
+| --- | --- |
+| 客户端心跳 | 每 30 秒发送一次 `{"type":"ping"}` |
+| 服务端应答 | 立即返回 `{"type":"pong"}` |
+| 服务端判定离线 | 60 秒未收到任何报文，移除在线标记（Redis 键 TTL 60 秒自动过期） |
+| 客户端重连 | 指数退避 1s → 2s → 4s → … → 15s 封顶；重连成功后发送 `sync` 补拉缺失消息 |
+
+---
+
+### 18.3 报文通用格式
+
+所有 WebSocket 报文统一为 JSON 字符串：
+
+```json
+{
+  "type": "private_msg",
+  "data": { }
+}
+```
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `type` | string | 报文类型，见 18.4 |
+| `data` | object | 业务载荷；无载荷时为 `null` |
+
+---
+
+### 18.4 报文类型总表
+
+| type | 方向 | 说明 |
+| --- | --- | --- |
+| `connected` | S → C | 连接建立成功 |
+| `ping` / `pong` | 双向 | 心跳保活 |
+| `private_msg` | C → S | 发送 1对1消息 |
+| `private_ack` | S → C | 发送确认（含服务端消息 ID） |
+| `private_recv` | S → C | 收到对方消息 |
+| `private_read` | 双向 | 已读回执 |
+| `sync` | C → S | 上线补拉缺失消息 |
+| `notify` | S → C | 系统通知推送 |
+| `error` | S → C | 业务异常 |
+
+#### 18.4.1 connected（S → C）
+
+连接建立后服务端主动下发：
+
+```json
+{"type":"connected","data":{"user_id":10001,"server_time":"2026-11-21T13:30:00+08:00"}}
+```
+
+#### 18.4.2 private_msg（C → S）
+
+发送一条 1对1消息。
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `to` | int/string | ✅ | 接收方 `user_id` |
+| `content` | string | ✅ | 消息内容，长度 ≤ 2000 字符 |
+| `msg_type` | int | ✅ | 1=文本 2=图片 3=文件（本期仅要求文本） |
+| `media_url` | string | 否 | 图片/文件 URL（`msg_type ≠ 1` 时必填） |
+| `client_msg_id` | string | ✅ | 客户端生成的幂等 ID（建议 UUID），**服务端按 `(sender_id, client_msg_id)` 去重** |
+
+```json
+{"type":"private_msg","data":{"to":10002,"content":"老师，这道极限题怎么做？","msg_type":1,"client_msg_id":"c1f2e3d4-..."}}
+```
+
+#### 18.4.3 private_ack（S → C）
+
+发送成功确认，客户端据此把“发送中”改为“已发送”。
+
+```json
+{"type":"private_ack","data":{"client_msg_id":"c1f2e3d4-...","message_id":91001,"conversation_id":501,"create_time":"2026-11-21T13:30:05+08:00"}}
+```
+
+同一 `client_msg_id` 重复提交时，服务端返回**首次落库的那条**消息的 `message_id`，不产生重复记录。
+
+#### 18.4.4 private_recv（S → C）
+
+接收方在线时实时收到。
+
+```json
+{
+  "type":"private_recv",
+  "data":{
+    "message_id": 91001,
+    "conversation_id": 501,
+    "from": 10001,
+    "from_name": "张三",
+    "content": "老师，这道极限题怎么做？",
+    "msg_type": 1,
+    "media_url": null,
+    "create_time": "2026-11-21T13:30:05+08:00"
+  }
+}
+```
+
+接收方收到后应回发 `private_read` 以回写已读状态。
+
+#### 18.4.5 private_read（双向）
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `conversation_id` | int/string | ✅ | 会话 ID |
+| `last_read_id` | int/string | ✅ | 已读到的最大 `message_id`（游标，不逐条更新） |
+
+```json
+{"type":"private_read","data":{"conversation_id":501,"last_read_id":91001}}
+```
+
+服务端处理：将该会话内 `receiver_id = 当前用户`、`read_at IS NULL`、`id <= last_read_id` 的消息批量置为已读，并把会话未读数清零，随后向对方推送 `private_read` 以便显示“对方已读”。
+
+#### 18.4.6 sync（C → S）
+
+重连后补拉缺失消息，是**离线消息不丢的关键**。
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `last_msg_id` | int/string | 否 | 客户端本地已持有的最大消息 ID；不传则按 0 处理 |
+
+```json
+{"type":"sync","data":{"last_msg_id":91000}}
+```
+
+服务端按 `receiver_id = 当前用户 AND id > last_msg_id` 查询（单次上限 200 条），逐条以 `private_recv` 推送；超过上限时客户端再次发送 `sync` 续拉。
+
+#### 18.4.7 notify（S → C）
+
+系统通知实时推送，数据体与 13.1 通知列表中的单条结构一致，事件来源为 `notification` 表写入成功。
+
+```json
+{"type":"notify","data":{"id":30001,"biz_type":1,"title":"作业即将截止","content":"《高数第3章作业》还剩 2 小时截止。","read_status":0,"send_at":"2026-11-21T13:30:00+08:00"}}
+```
+
+> 注意：`notify` 只是**加速通道**，数据以 `notification` 表为准；离线或断线期间的通知由 13.1 列表接口补全。
+
+#### 18.4.8 error（S → C）
+
+```json
+{"type":"error","data":{"code":1015,"msg":"只能与同一课程中的老师/学生私信","ref_type":"private_msg"}}
+```
+
+---
+
+### 18.5 HTTP 兜底接口
+
+WebSocket 不可用（如企业代理阻断 `Upgrade`）时，前端降级为 HTTP 收发；两者共用同一套业务与表结构。
+
+#### 18.5.1 会话列表  🔒
+
+- **接口**：`GET /api/v1/private/conversations`
+- **Query**：`page`（默认 1）、`page_size`（默认 20，最大 100）
+- **说明**：只返回当前用户参与的会话，按 `last_message_at` 倒序。
+
+**响应 data.list**
+
+```json
+{
+  "conversation_id": 501,
+  "peer_id": 10002,
+  "peer_name": "李老师",
+  "peer_role": 2,
+  "peer_avatar_url": null,
+  "last_message_preview": "老师，这道极限题怎么做？",
+  "last_message_at": "2026-11-21T13:30:05+08:00",
+  "unread_count": 3
+}
+```
+
+分页结构沿用 2.4。
+
+#### 18.5.2 创建或复用会话  🔒
+
+- **接口**：`POST /api/v1/private/conversations`
+- **说明**：按 `(user_a_id < user_b_id)` 归一化后查重，已存在则直接返回，保证同一对用户只有一条会话。
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `peer_id` | int/string | ✅ | 对方 `user_id` |
+
+**响应 data**：`{ "conversation_id": 501, "conversation_no": "PC2026112100001" }`
+
+权限不满足时返回 `1015` / `1016` / `1017`。
+
+#### 18.5.3 消息历史（游标分页）  🔒
+
+- **接口**：`GET /api/v1/private/conversations/{conversation_id}/messages`
+- **Query**：`before_id`（可选，取该 ID 之前更早的消息）、`limit`（默认 20，最大 50）
+- **说明**：按 `id` 倒序返回，使用游标而非 `offset`，避免新消息写入导致翻页错位。
+
+**响应 data.list**：消息对象结构同 18.4.4 的 `data`，另含 `read_at`、`delivered_at`。
+
+#### 18.5.4 发送消息（HTTP 兜底）  🔒
+
+- **接口**：`POST /api/v1/private/messages`
+- **参数**：同 18.4.2（`to`、`content`、`msg_type`、`media_url`、`client_msg_id`）
+- **说明**：落库逻辑与 WebSocket 完全一致；若接收方在线，仍会通过 `/ws/private` 实时推送。
+
+#### 18.5.5 标记已读  🔒
+
+- **接口**：`POST /api/v1/private/conversations/{conversation_id}/read`
+- **参数**：`last_read_id`（int/string，必填）
+
+#### 18.5.6 可私信联系人  🔒
+
+- **接口**：`GET /api/v1/private/contacts`
+- **说明**：按 18.1 的师生关系口径过滤，返回当前用户有权发起私信的对象。
+
+| 角色 | 可见范围 |
+| --- | --- |
+| 学生 | 同学（同课程学生）+ 自己的老师（同课程教师） |
+| 教师 | 自己课程的学生 |
+| 管理员 | 空（不参与私信） |
+
+**响应 data.list**
+
+```json
+{ "user_id": 10002, "real_name": "李老师", "role": 2, "relation": "我的老师", "online": true }
+```
+
+---
+
+### 18.6 错误码补充
+
+| 错误码 | 含义 | 建议处理 |
+| --- | --- | --- |
+| 1014 | WebSocket 连接未认证（token 缺失或无效） | 重新登录后重连 |
+| 1015 | 无权与该用户私信（非同一课程师生） | 提示用户，不重试 |
+| 1016 | 教师之间不允许私信 | 提示用户，不重试 |
+| 1017 | 管理员不参与私信，请使用系统通知 | 提示用户，不重试 |
+
+---
+
+### 18.7 消息可靠性与离线策略
+
+| 环节 | 策略 |
+| --- | --- |
+| 消息幂等 | 唯一约束 `uk_client(sender_id, client_msg_id)`；重复提交返回首次落库结果 |
+| 落库优先 | 先写 `private_message` 并更新会话摘要，**事务提交后**才推送，避免对方查到空消息 |
+| 在线推送 | 查 Redis 在线集合，命中则推送；未命中不做任何操作 |
+| 离线保留 | 消息持久化在 MySQL，接收方上线后通过 `sync` 或 13.1 通知/会话列表补全 |
+| 多实例 | 在线状态存 Redis；跨实例投递走 Redis Pub/Sub，订阅方只推本机持有的会话 |
+| 并发写 | 同一 WebSocket 会话发送时必须加锁（`synchronized(session)`），防止 `TEXT_PARTIAL_WRITING` |
+| 断线重连 | 客户端指数退避重连，成功后发 `sync`；服务端保证不重复、不遗漏 |
+
+> 该策略遵循架构设计文档 §9.2 第 3 条：运行时状态只存 Redis/MySQL，禁止进程内内存态。
+
+---
+
+### 18.8 数据库变更
+
+**新增表36 `private_conversation`（私信会话表）**
+
+| 字段名 | 数据类型 | 键 | 可空 | 说明 |
+| --- | --- | --- | --- | --- |
+| `id` | BIGINT UNSIGNED | PK | 否 | 会话ID |
+| `conversation_no` | VARCHAR(32) | UK | 否 | 会话编号（UUID） |
+| `user_a_id` | BIGINT UNSIGNED | FK, UK | 否 | 对话方A（约定 `user_a_id < user_b_id`） |
+| `user_b_id` | BIGINT UNSIGNED | FK, UK | 否 | 对话方B |
+| `last_message_id` | BIGINT UNSIGNED | | 是 | 最后一条消息ID |
+| `last_message_at` | DATETIME | INDEX | 是 | 最后消息时间 |
+| `last_message_preview` | VARCHAR(200) | | 是 | 最后消息摘要 |
+| `a_unread_count` | INT | | 否 | A 的未读数，默认 0 |
+| `b_unread_count` | INT | | 否 | B 的未读数，默认 0 |
+| `a_last_read_id` | BIGINT UNSIGNED | | 否 | A 的已读游标，默认 0 |
+| `b_last_read_id` | BIGINT UNSIGNED | | 否 | B 的已读游标，默认 0 |
+| `create_time` / `update_time` / `is_deleted` | — | — | — | 通用审计字段 |
+
+- 唯一键 `uk_pair(user_a_id, user_b_id)`：保证同一对用户只有一条会话。
+
+**新增表37 `private_message`（私信消息表）**
+
+| 字段名 | 数据类型 | 键 | 可空 | 说明 |
+| --- | --- | --- | --- | --- |
+| `id` | BIGINT UNSIGNED | PK | 否 | 消息ID，兼作游标 |
+| `conversation_id` | BIGINT UNSIGNED | FK, INDEX | 否 | 关联表36 |
+| `sender_id` | BIGINT UNSIGNED | FK | 否 | 发送者 |
+| `receiver_id` | BIGINT UNSIGNED | FK, INDEX | 否 | 接收者（冗余，便于补拉查询） |
+| `content` | TEXT | | 否 | 消息内容 |
+| `msg_type` | TINYINT UNSIGNED | | 否 | 1 文本，2 图片，3 文件 |
+| `media_url` | VARCHAR(255) | | 是 | 媒体地址 |
+| `client_msg_id` | VARCHAR(64) | UK | 否 | 客户端幂等ID |
+| `delivered_at` | DATETIME | | 是 | 送达时间 |
+| `read_at` | DATETIME | | 是 | 已读时间 |
+| `recall_status` | TINYINT UNSIGNED | | 否 | 0 正常，1 已撤回 |
+| `report_status` | TINYINT UNSIGNED | | 否 | 举报状态（预留） |
+| `create_time` | DATETIME | — | 否 | 生成时间（仅追加，不修改） |
+
+- 唯一键 `uk_client(sender_id, client_msg_id)`；
+- 索引 `idx_conv_id(conversation_id, id)`、`idx_receiver_unread(receiver_id, read_at)`。
+
+> 不改动任何现有表。`class_info`、`class_member`、`course`、`notification` 仅被读取。
+
+---
+
+### 18.9 与既有接口的关系
+
+| 既有内容 | 本期处理 |
+| --- | --- |
+| 第 6 章 聊天与会话（`chat_session` / `chat_message`） | **不改动**，仍为 AI 答疑的数据模型，本期不实现其通道 |
+| 17.5.1 AI 流式对话（SSE） | **本期不实现**，文档保留待后续排期 |
+| 第 13 章 通知与消息 | 保留 HTTP 拉取；新增 `notify` 实时推送作为加速通道 |
+| `/ws/dashboard` | 不改动 |
+| `/ws/chat`（代码中的回显骨架） | 删除，不在接口文档中保留 |
+
+---
+
+## 19. v1.8 增补：会话级消息序号 seq 与三态回执
+
+> **依据**：《实时聊天系统技术与实现》P10「ACK + 重发 + 去重」、P11「会话内 seq 单调递增」、P12「离线同步与增量对账」
+> **变更性质**：在 18.4 / 18.5 的基础上**追加字段与报文**，不改变既有报文语义
+> **数据库**：`v1.8_message_seq.sql`、`v1.8.1_seq_guard.sql`
+
+### 19.1 为什么引入 seq
+
+原有实现以自增主键 `id` 充当消息序号，存在三个问题：
+
+| 问题 | 说明 |
+| --- | --- |
+| 跨会话穿插 | `id` 全局自增，A 会话 1~100、B 会话 150 时，编号不连续 |
+| 空洞检测失效 | 客户端靠 `seq === localMax + 1` 判断是否接上，`id` 有空洞时永远不成立 |
+| 分库分表不可用 | 全局自增无法保证会话内连续 |
+
+**结论**：改为**会话级**序号 `seq`，由服务端 Redis `INCR` 发号，从 1 开始连续递增；`id` 退化为纯主键，仅用于唯一定位单条消息。
+
+`seq` 同时承担四个职责：**顺序权威、去重基准、离线同步游标、未读数计算**。
+
+### 19.2 新增字段
+
+**`private_message.seq`**（BIGINT UNSIGNED，NOT NULL）
+
+| 属性 | 说明 |
+| --- | --- |
+| 生成方式 | Redis `INCR ai_tutor:seq:conv:{conversationId}`，从 1 开始 |
+| 唯一约束 | `uk_conv_seq(conversation_id, seq)` |
+| 查询索引 | `idx_conv_seq(conversation_id, seq)` |
+| 完整性约束 | `chk_seq_positive` CHECK (`seq` >= 1)，禁止 0 或负值 |
+
+**`private_conversation.a_delivered_seq` / `b_delivered_seq`**（BIGINT UNSIGNED，DEFAULT 0）
+
+记录双方「已送达到的最大 seq」，用于三态中的**已送达**：
+送达（对方客户端收到）≠ 已读（对方点开会话），两者游标独立推进。
+
+### 19.3 报文变更
+
+#### 19.3.1 所有消息对象新增 `seq`
+
+`private_recv`、`private_ack`、`sync`、`private_resync` 返回的消息体统一新增：
+
+```json
+{ "seq": 6 }
+```
+
+客户端**必须按 seq 升序排列**，不得使用 `create_time` 或 `id` 排序（客户端时钟不可信）。
+
+#### 19.3.2 private_ack 增补 seq
+
+```json
+{"type":"private_ack","data":{"client_msg_id":"c1f2...","message_id":"9","conversation_id":"1","seq":6,"create_time":"..."}}
+```
+
+#### 19.3.3 private_read 游标改为 seq
+
+字段由 `last_read_id`（消息ID）改为 **`last_read_seq`**（会话内序号）。为兼容旧客户端，服务端仍接受 `last_read_id`，按 seq 语义处理。
+
+```json
+{"type":"private_read","data":{"conversation_id":"1","last_read_seq":"6"}}
+```
+
+#### 19.3.4 新增 private_delivered（双向）
+
+用于三态中的「已送达」。
+
+**C → S**：接收方收到消息后立即回执。
+
+```json
+{"type":"private_delivered","data":{"conversation_id":"1","delivered_seq":"6"}}
+```
+
+**S → C**：服务端确认后通知发送方，发送方据此把状态从「已发送」升级为「已送达」。
+
+```json
+{"type":"private_delivered","data":{"conversation_id":"1","delivered_seq":"6","receiver_id":"1"}}
+```
+
+#### 19.3.5 新增 private_resync（补洞）
+
+客户端检测到 seq 跳号时请求补齐。
+
+**C → S**
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `conversation_id` | string | ✅ | 会话ID |
+| `after_seq` | string | ✅ | 本地已有的最大 seq |
+| `up_to_seq` | string | 否 | 上界（含），不传表示不设上界 |
+
+```json
+{"type":"private_resync","data":{"conversation_id":"1","after_seq":"2","up_to_seq":"5"}}
+```
+
+**S → C**
+
+```json
+{"type":"private_resync","data":{"conversation_id":"1","count":3,"has_more":false,"messages":[ ... ]}}
+```
+
+#### 19.3.6 报文类型总表更新
+
+| type | 方向 | v1.8 状态 |
+| --- | --- | --- |
+| `private_delivered` | 双向 | 🆕 新增 |
+| `private_resync` | C → S | 🆕 新增 |
+| 其余 8 种 | — | 语义不变，消息体新增 `seq` |
+
+### 19.4 HTTP 接口变更
+
+| 接口 | 变更 |
+| --- | --- |
+| 18.5.3 消息历史 | 参数 `before_id` → **`before_seq`**，按 seq 游标分页 |
+| 18.5.5 标记已读 | 参数 `last_read_id` → **`last_read_seq`**（可选，不传视为读到最新） |
+| **19.4.1 区间补洞** | 🆕 `GET /api/v1/private/conversations/{id}/messages/range?after_seq=&up_to_seq=&limit=` |
+
+**19.4.1 区间补洞响应**
+
+```json
+{"code":200,"data":[{"messageId":"4","seq":3,"content":"...","createTime":"..."}]}
+```
+
+按 `seq` **升序**返回，`limit` 默认 200、最大 200。
+
+### 19.5 客户端可靠性要求
+
+| 环节 | 要求 | 对应 PPT |
+| --- | --- | --- |
+| 心跳 | 30s 发 `ping`，10s 未收到 `pong` 判定连接半开并主动断开重连 | P07 |
+| 重连退避 | 1s → 2s → 4s … 封顶 15s | P07 |
+| 重连补拉 | 连接建立后立即发 `sync`，带 `last_msg_id` | P07 / P12 |
+| **超时重发** | 发送后 **3s** 未收到 `private_ack` 则重发，最多 3 次 | **P10** |
+| **幂等去重** | 服务端以 `(sender_id, client_msg_id)` 唯一索引兜底，重复只补回执不重复投递 | **P10** |
+| **空洞检测** | `seq === localMax + 1` 正常；`seq > localMax + 1` 发 `private_resync`；`seq <= localMax` 丢弃 | **P11** |
+| 已读游标 | 进入会话按本页最大 seq 上报 `private_read` | P12 |
+
+### 19.6 迁移踩坑记录（真实事故）
+
+`seq` 最初定义为 `NOT NULL` 且无默认值。后端代码更新前运行的是旧版 INSERT（语句中不含 `seq` 列），MySQL 为缺失列填入隐式默认值 **0**，产生 `seq = 0` 的非法数据，导致：
+
+- 会话内排序错乱（0 排在 1 之前）
+- 客户端空洞检测逻辑失效
+
+**修复措施**：
+
+1. 删除 `seq = 0` 的脏数据，回收超出实际最大 seq 的游标值；
+2. 新增 `chk_seq_positive` CHECK 约束（`v1.8.1_seq_guard.sql`），使漏填 seq 的写入**显式报错**而非静默写 0；
+3. 后端增加 Redis 发号器 `MessageSeqService`，键丢失时以 `max(seq) + 1` 重建基线，保证不倒退。
+
+> 教训：**表结构变更与新代码上线必须同时进行**；对「服务端必须赋值」的列，用 CHECK 约束把静默错误转为显式失败。
+
+---
+
 ### 文档结束
 
-> 本文档为 v1.1 精简版。功能覆盖以 16.6「FR 功能覆盖对照表」为准，任何新增接口须先确认对应 FR 需求，避免冗余回归。
+> 本文档为 v1.1 精简版，已增补 v1.7 第 18 章「WebSocket 1对1实时对话」与 v1.8 第 19 章「会话级 seq 与三态回执」。功能覆盖以 16.6「FR 功能覆盖对照表」为准，任何新增接口须先确认对应 FR 需求，避免冗余回归。

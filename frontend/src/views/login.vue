@@ -1,102 +1,78 @@
 <template>
-  <div class="login-container">
-    <el-card class="login-card">
-      <h2 class="title">AI 数字人助教系统</h2>
-      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
-        <!-- ============ 账密登录 ============ -->
-        <el-tab-pane label="账号密码登录" name="password">
-          <el-form ref="pwdFormRef" :model="pwdForm" :rules="pwdRules" label-width="0">
-            <el-form-item prop="username">
-              <el-input v-model="pwdForm.username" placeholder="请输入账号（学号 / 工号）" clearable />
-            </el-form-item>
-            <el-form-item prop="password">
-              <el-input v-model="pwdForm.password" type="password" placeholder="请输入密码" show-password
-                        @keyup.enter="handlePwdLogin" />
-            </el-form-item>
-            <el-button type="primary" class="full-btn" :loading="loading" @click="handlePwdLogin">登 录</el-button>
-          </el-form>
-          <div class="link-line">
-            没有账号？<el-link type="primary" @click="router.push('/register')">立即注册</el-link>
-          </div>
-        </el-tab-pane>
+  <div class="auth">
+    <div class="blob blob-a"></div>
+    <div class="blob blob-b"></div>
 
-        <!-- ============ 手机验证码登录 ============ -->
-        <el-tab-pane label="手机验证码登录" name="sms">
-          <el-form ref="smsFormRef" :model="smsForm" :rules="smsRules" label-width="0">
-            <el-form-item prop="phone">
-              <el-input v-model="smsForm.phone" placeholder="请输入手机号" maxlength="11" clearable />
-            </el-form-item>
-            <el-form-item prop="verifyCode">
-              <div class="code-line">
-                <el-input v-model="smsForm.verifyCode" placeholder="请输入验证码" maxlength="6" />
-                <el-button :disabled="countdown > 0" @click="handleSendSms">
-                  {{ countdown > 0 ? countdown + 's 后重发' : '获取验证码' }}
-                </el-button>
-              </div>
-            </el-form-item>
-            <el-button type="primary" class="full-btn" :loading="loading" @click="handleSmsLogin">登 录</el-button>
-          </el-form>
-          <div class="tip-line">未注册的手机号验证通过后将自动创建账号</div>
-        </el-tab-pane>
-
-        <!-- ============ 扫码登录 ============ -->
-<!--        <el-tab-pane label="扫码登录" name="qr">
-          <div class="qr-box">
-            <template v-if="qrStatus !== 3">
-              <div class="qr-img">
-                <div class="qr-grid"></div>
-                <div class="qr-mask">模拟二维码</div>
-              </div>
-              <div class="qr-token">凭证：{{ qrToken }}</div>
-              <div class="qr-tip">请使用模拟手机扫码，{{ qrCountdown }}s 后失效</div>
-            </template>
-            <template v-else>
-              <el-empty description="二维码已过期" />
-            </template>
-            <el-button type="primary" plain @click="initQr">
-              {{ qrStatus === 3 ? '刷新二维码' : '重新生成' }}
-            </el-button>
-            <el-button type="success" :disabled="qrStatus === 3" @click="openPhoneDialog">
-              模拟手机扫码
-            </el-button>
-          </div>
-        </el-tab-pane>-->
-      </el-tabs>
-    </el-card>
-
-    <!-- ============ 模拟手机弹窗 ============ -->
-<!--    <el-dialog v-model="phoneDialogVisible" title="模拟手机" width="380px" :close-on-click-modal="false"
-               @closed="handleDialogClosed">
-      <div v-if="!hasScanned">
-        <div class="dialog-sub">选择一个账号模拟扫码：</div>
-        <div v-for="row in mockUsers" :key="row.account" class="mock-user" @click="handleMockScan(row)">
-          <div>
-            <div class="mock-account">{{ row.account }}</div>
-            <div class="mock-name">{{ row.realName }}</div>
-          </div>
-          <el-tag :type="row.inWhitelist ? 'success' : 'danger'" size="small">
-            {{ row.inWhitelist ? '白名单内' : '非白名单' }}
-          </el-tag>
+    <div class="auth-shell">
+      <section class="brand">
+        <div class="brand-top">
+          <div class="mark">AI</div>
+          <span class="mark-text">DeepSeek 驱动</span>
         </div>
-      </div>
-      <div v-else class="confirm-pane">
-        <p>账号 <b>{{ scannedAccount }}</b> 已扫码</p>
-        <p class="dialog-sub">是否确认登录 PC 端？</p>
-        <div class="confirm-btns">
-          <el-button type="primary" @click="handleQrConfirm">确认登录</el-button>
-          <el-button @click="handleQrCancel">取消</el-button>
-        </div>
-      </div>
-    </el-dialog>
-    -->
+        <h1>AI 数字人助教</h1>
+        <p class="slogan">一对一私教 · 智能导学 · 全程陪伴</p>
+        <p class="sub">覆盖课前预习、课中答疑、课后复习、作业辅导与备考冲刺的完整学习闭环。</p>
+        <ul class="features">
+          <li><span class="ico">✓</span><div><strong>智能答疑</strong><em>引导式讲解，不只给答案</em></div></li>
+          <li><span class="ico">✓</span><div><strong>课程导学</strong><em>学习路径与知识点拆解</em></div></li>
+          <li><span class="ico">✓</span><div><strong>学情报告</strong><em>掌握度雷达图与诊断建议</em></div></li>
+        </ul>
+      </section>
+
+      <section class="panel">
+        <h2>欢迎回来</h2>
+        <p class="panel-sub">登录后进入你的专属工作台</p>
+
+        <el-tabs v-model="activeTab" class="auth-tabs" @tab-change="handleTabChange">
+          <el-tab-pane label="账号密码登录" name="password">
+            <el-form ref="pwdFormRef" :model="pwdForm" :rules="pwdRules" label-width="0" @keyup.enter="handlePwdLogin">
+              <el-form-item prop="username">
+                <el-input v-model="pwdForm.username" placeholder="请输入账号（学号 / 工号）" clearable size="large" />
+              </el-form-item>
+              <el-form-item prop="password">
+                <el-input v-model="pwdForm.password" type="password" placeholder="请输入密码" show-password size="large" />
+              </el-form-item>
+              <el-button type="primary" class="full-btn" :loading="loading" @click="handlePwdLogin">登 录</el-button>
+            </el-form>
+            <div class="link-line">没有账号？<el-link type="primary" :underline="false" @click="router.push('/register')">立即注册</el-link></div>
+          </el-tab-pane>
+
+          <el-tab-pane label="手机验证码登录" name="sms">
+            <el-form ref="smsFormRef" :model="smsForm" :rules="smsRules" label-width="0">
+              <el-form-item prop="phone">
+                <el-input v-model="smsForm.phone" placeholder="请输入手机号" maxlength="11" clearable size="large" />
+              </el-form-item>
+              <el-form-item prop="verifyCode">
+                <div class="code-line">
+                  <el-input v-model="smsForm.verifyCode" placeholder="请输入验证码" maxlength="6" size="large" />
+                  <el-button :disabled="countdown > 0" size="large" @click="handleSendSms">
+                    {{ countdown > 0 ? countdown + 's 后重发' : '获取验证码' }}
+                  </el-button>
+                </div>
+              </el-form-item>
+              <el-button type="primary" class="full-btn" :loading="loading" @click="handleSmsLogin">登 录</el-button>
+            </el-form>
+            <div class="tip-line">未注册的手机号验证通过后将自动创建账号</div>
+          </el-tab-pane>
+        </el-tabs>
+
+        <p class="switch">
+          <button type="button" class="link" @click="router.push('/')">← 返回首页</button>
+        </p>
+      </section>
+    </div>
+
+    <ThemeSwitcher />
   </div>
 </template>
 
-<script setup>
+﻿<script setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import ThemeSwitcher from '../components/ThemeSwitcher.vue'
+import { applyTheme, currentTheme } from '../config/themes.js'
 import {
   loginByPassword, sendSmsCode, loginBySms, getMe
 } from '@/api/v1/auth'
@@ -322,6 +298,7 @@ const routeByRole = (roleName) => {
 watch(activeTab, handleTabChange)
 
 onMounted(() => {
+  applyTheme(currentTheme())
   if (activeTab.value === 'qr') initQr()
 })
 
@@ -333,117 +310,61 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.login-container {
-  height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background: #f2f5fb;
+.auth {
+  position: relative; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 40px 28px; overflow: hidden;
+  background: var(--bg); background-image: var(--bg-image);
+  color: var(--text);
+  font-family: "PingFang SC", "Microsoft YaHei", Inter, system-ui, sans-serif;
 }
-.login-card {
-  width: 420px;
-}
-.title {
-  text-align: center;
-  margin: 6px 0 16px;
-  color: #303133;
-}
-.full-btn {
-  width: 100%;
-}
-.link-line {
-  margin-top: 12px;
-  text-align: right;
-  font-size: 13px;
-}
-.tip-line {
-  margin-top: 10px;
-  font-size: 12px;
-  color: #909399;
-}
-.code-line {
-  display: flex;
-  gap: 10px;
-  width: 100%;
-}
-.qr-box {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 0;
-}
-.qr-img {
-  position: relative;
-  width: 180px;
-  height: 180px;
-  border: 1px solid #dcdfe6;
-  border-radius: 6px;
-  overflow: hidden;
-}
-.qr-grid {
-  width: 100%;
-  height: 100%;
-  background-image:
-    linear-gradient(#303133 1px, transparent 1px),
-    linear-gradient(90deg, #303133 1px, transparent 1px);
-  background-size: 12px 12px;
-  opacity: 0.85;
-}
-.qr-mask {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.72);
-  font-weight: 600;
-  color: #409eff;
-}
-.qr-token {
-  font-size: 11px;
-  color: #909399;
-  word-break: break-all;
-  max-width: 320px;
-}
-.qr-tip {
-  font-size: 12px;
-  color: #e6a23c;
-}
-.dialog-sub {
-  color: #909399;
-  font-size: 13px;
-  margin-bottom: 10px;
-}
-.mock-user {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 12px;
-  border: 1px solid #ebeef5;
-  border-radius: 6px;
-  margin-bottom: 8px;
-  cursor: pointer;
-}
-.mock-user:hover {
-  border-color: #409eff;
-  background: #ecf5ff;
-}
-.mock-account {
-  font-weight: 600;
-}
-.mock-name {
-  font-size: 12px;
-  color: #909399;
-}
-.confirm-pane {
-  text-align: center;
-  padding: 10px 0;
-}
-.confirm-btns {
-  margin-top: 16px;
-  display: flex;
-  justify-content: center;
-  gap: 12px;
+.blob { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .5; pointer-events: none; }
+.blob-a { width: 520px; height: 520px; top: -180px; left: -120px; background: var(--accent-soft); }
+.blob-b { width: 420px; height: 420px; right: -140px; bottom: -160px; background: var(--accent-soft); }
+
+.auth-shell { position: relative; z-index: 2; width: min(1000px, 100%); display: grid; grid-template-columns: 1.05fr .95fr; gap: 56px; align-items: center; }
+.brand-top { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+.mark { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-weight: 800; font-size: 14px; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2)); box-shadow: var(--shadow); }
+.mark-text { font-size: 11.5px; letter-spacing: .18em; color: var(--muted); text-transform: uppercase; }
+.brand h1 { margin: 0 0 12px; font-size: clamp(32px, 3.6vw, 44px); line-height: 1.15; font-family: var(--font-head); color: var(--text-h); }
+.slogan { margin: 0 0 10px; font-size: 15px; color: var(--accent); font-weight: 600; letter-spacing: .04em; }
+.sub { margin: 0 0 30px; font-size: 13.5px; line-height: 1.85; color: var(--muted); max-width: 30em; }
+.features { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.features li { display: flex; gap: 12px; align-items: flex-start; }
+.features .ico { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; color: var(--accent); background: var(--accent-soft); }
+.features strong { display: block; font-size: 14px; color: var(--text); margin-bottom: 2px; }
+.features em { font-style: normal; font-size: 12.5px; color: var(--muted); }
+
+.panel { padding: 34px 34px 24px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-hover); backdrop-filter: blur(14px); }
+.panel h2 { margin: 0 0 6px; font-size: 24px; color: var(--text-h); font-family: var(--font-head); }
+.panel-sub { margin: 0 0 18px; font-size: 13px; color: var(--muted); }
+
+:deep(.el-tabs__nav-wrap::after) { background: var(--border); height: 1px; }
+:deep(.el-tabs__item) { color: var(--muted); font-size: 13.5px; }
+:deep(.el-tabs__item.is-active) { color: var(--accent); font-weight: 600; }
+:deep(.el-tabs__active-bar) { background: linear-gradient(90deg, var(--accent), var(--accent-2)); height: 3px; border-radius: 2px; }
+:deep(.el-input__wrapper) { background: var(--surface-2); box-shadow: 0 0 0 1px var(--border) inset; border-radius: 11px; padding: 2px 13px; }
+:deep(.el-input__wrapper.is-focus) { box-shadow: 0 0 0 1px var(--accent) inset, 0 0 0 3px var(--accent-soft); }
+:deep(.el-input__inner) { color: var(--text); }
+:deep(.el-form-item) { margin-bottom: 16px; }
+
+.full-btn { width: 100%; height: 46px; border-radius: 11px; font-size: 15px; letter-spacing: .14em; color: #fff; border: 0; background: linear-gradient(100deg, var(--accent), var(--accent-2)); box-shadow: 0 12px 26px rgba(124, 92, 255, .22); }
+.full-btn:hover { filter: brightness(1.05); }
+
+.code-line { display: flex; gap: 8px; width: 100%; }
+.code-line .el-input { flex: 1; }
+
+.link-line { margin-top: 14px; text-align: right; font-size: 12.5px; color: var(--muted); }
+.tip-line { margin-top: 12px; font-size: 12px; color: var(--muted); }
+
+.switch { margin: 18px 0 0; text-align: center; font-size: 12.5px; color: var(--muted); }
+.switch .sep { margin: 0 6px; opacity: .5; }
+.link { border: 0; background: none; padding: 0; cursor: pointer; color: var(--accent); font-family: inherit; font-size: 12.5px; }
+.link:hover { text-decoration: underline; }
+
+@media (max-width: 900px) {
+  .auth { padding: 22px; }
+  .auth-shell { grid-template-columns: 1fr; max-width: 440px; gap: 0; }
+  .brand { display: none; }
+  .panel { padding: 28px 22px 20px; }
 }
 </style>

@@ -50,6 +50,11 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-websocket</artifactId>
 		</dependency>
+		<!-- MongoDB：私信消息文档存储（支持文本/图片/文件/音频多样化消息体） -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-mongodb</artifactId>
+		</dependency>
 		<!-- RabbitMQ：数据大屏业务事件通知（教师动作即时驱动大屏刷新） -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

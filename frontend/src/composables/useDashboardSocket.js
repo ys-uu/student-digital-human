@@ -1,11 +1,16 @@
 import { onMounted, onUnmounted, ref } from 'vue'
+import { useUserStore } from '@/stores/user'
 
 /**
  * 数据大屏实时通道。
  * 优先使用 WebSocket 接收服务端节拍推送，连续重连失败后回调 onFallback 交由页面降级轮询。
+ *
+ * 修复说明：原实现从 localStorage 读取 token，但本系统的 access token 只存 Pinia 内存、
+ * 不落 localStorage（见 stores/user.js），导致 token 恒为空、握手必然被拒——改为读 store。
  */
 export function useDashboardSocket({ onMessage, onFallback } = {}) {
   const status = ref('connecting') // connecting | live | fallback
+  const userStore = useUserStore()
 
   let ws = null
   let retry = 0
@@ -15,12 +20,7 @@ export function useDashboardSocket({ onMessage, onFallback } = {}) {
 
   const buildUrl = () => {
     const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
-    let token = ''
-    try {
-      token = JSON.parse(localStorage.getItem('user') || '{}').token || ''
-    } catch (e) {
-      token = ''
-    }
+    const token = userStore.token || ''
     return `${protocol}://${location.host}/ws/dashboard?token=${encodeURIComponent(token)}`
   }
 
