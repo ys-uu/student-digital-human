@@ -1,9 +1,11 @@
 package com.edu.aitutor.module.privatechat.service;
 
+import com.edu.aitutor.module.privatechat.repository.redis.MessageSeqRedisRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+
+import java.time.Duration;
 
 /**
  * 会话级消息序号发号器，对应《实时聊天系统技术与实现》P11。
@@ -28,16 +30,13 @@ public class MessageSeqService {
 
     private static final Logger log = LoggerFactory.getLogger(MessageSeqService.class);
 
-    /** 发号器键前缀：seq:{conversationId} */
-    private static final String SEQ_KEY_PREFIX = "ai_tutor:seq:conv:";
-
     /** 发号器键 TTL：7 天。会话长期无消息时键过期，下次从数据库 max(seq) 重建 */
-    private static final long SEQ_KEY_TTL_SECONDS = 7 * 24 * 60 * 60L;
+    private static final Duration SEQ_KEY_TTL = Duration.ofDays(7);
 
-    private final StringRedisTemplate redisTemplate;
+    private final MessageSeqRedisRepository messageSeqRedisRepository;
 
-    public MessageSeqService(StringRedisTemplate redisTemplate) {
-        this.redisTemplate = redisTemplate;
+    public MessageSeqService(MessageSeqRedisRepository messageSeqRedisRepository) {
+        this.messageSeqRedisRepository = messageSeqRedisRepository;
     }
 
     /**
@@ -52,7 +51,7 @@ public class MessageSeqService {
      *   <li>按会话隔离（键里带 conversationId），不同会话互不干扰，
      *       也避免了全局号段的写入竞争；</li>
      *   <li>比数据库自增更灵活：数据库自增是全局的，跨会话穿插，
-     *       客户端无法据此判断"中间有没有漏收"。</li>
+     *       客户端无法据此判断"有没有漏收"。</li>
      * </ul>
      * <p>
      * <b>为什么不用时间戳排序</b>：两台设备时钟不同步（NTP 漂移、时区、人为改表），
@@ -66,19 +65,17 @@ public class MessageSeqService {
      * @return 会话内单调递增的序号，从 1 开始，严格连续无空洞
      */
     public long nextSeq(Long conversationId, long dbMaxSeq) {
-        String key = SEQ_KEY_PREFIX + conversationId;
         try {
             // ★ 核心：Redis INCR 原子 +1，并发下也不会拿到重复序号
-            Long value = redisTemplate.opsForValue().increment(key);
+            Long value = messageSeqRedisRepository.increment(conversationId);
             if (value != null) {
                 if (value == 1L && dbMaxSeq > 0) {
                     // 键刚重建（过期或首次）：基线必须接在库中最大值之后，避免序号回退
                     long baseline = dbMaxSeq + 1;
-                    redisTemplate.opsForValue().set(key, String.valueOf(baseline));
-                    redisTemplate.expire(key, java.time.Duration.ofSeconds(SEQ_KEY_TTL_SECONDS));
+                    messageSeqRedisRepository.saveBaseline(conversationId, baseline, SEQ_KEY_TTL);
                     return baseline;
                 }
-                redisTemplate.expire(key, java.time.Duration.ofSeconds(SEQ_KEY_TTL_SECONDS));
+                messageSeqRedisRepository.refreshTtl(conversationId, SEQ_KEY_TTL);
                 return value;
             }
         } catch (Exception e) {

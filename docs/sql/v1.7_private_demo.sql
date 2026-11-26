@@ -2,7 +2,7 @@
 -- AI助教系统 v1.7 演示数据：WebSocket 1对1实时对话（私信）
 -- ============================================================
 -- 版本：v1.7（2026-11-21）
--- 依赖：ai_tutor.sql、rbac.sql、v1.3_rag_increment.sql、v1.7_private_message.sql 已执行
+-- 依赖：ai_tutor.sql、rbac.sql、v1.3_rag_increment.sql 已执行
 -- 执行：mysql -uroot -p123456 --default-character-set=utf8mb4 < v1.7_private_demo.sql
 --
 -- 用途：

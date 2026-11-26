@@ -41,6 +41,8 @@ spring:
       simple:
         # 消费异常不无限重投，避免故障时刷屏
         default-requeue-rejected: false
+  mongodb:
+    uri: "mongodb://你的MongoDB账号:你的MongoDB密码@127.0.0.1:27017/ai_tutor?authSource=admin"
 
 cors:
   allow-origins: http://localhost:5173,http://localhost:5174

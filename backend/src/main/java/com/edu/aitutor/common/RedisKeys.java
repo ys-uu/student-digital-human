@@ -53,8 +53,7 @@ public final class RedisKeys {
     // ==================== 私信实时通道（v1.7） ====================
 
     /**
-     * 用户在线连接集合，value 为 Set（本实例的 WebSocket sessionId），TTL 60s 续期。
-     * 心跳每 30s 刷新一次；进程异常退出时由 TTL 自然过期，避免残留"假在线"。
+     * 用户在线连接前缀；实际 key 追加 sessionId，每个连接独立 TTL。
      */
     public static final String WS_ONLINE = "ai_tutor:ws:online:%s";
 
@@ -70,4 +69,12 @@ public final class RedisKeys {
      * 客户端重连时优先携带本地游标，未携带时回退到该键值。
      */
     public static final String WS_SYNC_CURSOR = "ai_tutor:ws:sync:%s";
+
+    // ==================== 数据大屏 / 消息发号 ====================
+
+    /** 大屏图表聚合快照缓存前缀，实际 key 追加“天数:课程ID”，TTL 60s + 随机抖动 */
+    public static final String DASHBOARD_ANALYTICS_PREFIX = "dashboard:analytics:";
+
+    /** 会话级消息序号发号器，参数为会话ID，value 为当前 seq，TTL 7 天 */
+    public static final String MESSAGE_SEQ = "ai_tutor:seq:conv:%s";
 }

@@ -1,7 +1,7 @@
 package com.edu.aitutor.framework.security;
 
-import com.edu.aitutor.common.RedisKeys;
 import com.edu.aitutor.framework.jwt.JwtUtil;
+import com.edu.aitutor.framework.security.redis.AccessTokenBlacklistRedisRepository;
 import io.jsonwebtoken.Claims;
 import jakarta.annotation.Resource;
 import jakarta.servlet.FilterChain;
@@ -9,7 +9,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -27,8 +26,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Resource
     private JwtUtil jwtUtil;
-    @Resource(name = "stringRedisTemplate")
-    private StringRedisTemplate redisTemplate;
+    @Resource
+    private AccessTokenBlacklistRedisRepository accessTokenBlacklistRedisRepository;
     @Resource
     private RbacUserDetailsService userDetailsService;
 
@@ -40,8 +39,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             try {
                 Claims claims = jwtUtil.parseToken(token);
                 // 退出登录的 token 黑名单，命中即视为凭证失效
-                if (Boolean.TRUE.equals(
-                        redisTemplate.hasKey(String.format(RedisKeys.TOKEN_BLACKLIST, token)))) {
+                if (accessTokenBlacklistRedisRepository.existsBlacklist(token)) {
                     throw new BadCredentialsException("token 已被加入黑名单，请重新登录");
                 }
                 Long userId = Long.valueOf(claims.get("userId").toString());

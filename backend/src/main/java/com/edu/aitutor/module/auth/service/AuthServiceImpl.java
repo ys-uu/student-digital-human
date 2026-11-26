@@ -2,7 +2,6 @@ package com.edu.aitutor.module.auth.service;
 
 import com.edu.aitutor.common.BusinessException;
 import com.edu.aitutor.common.ErrorCode;
-import com.edu.aitutor.common.RedisKeys;
 import com.edu.aitutor.module.auth.dto.PasswordLoginDTO;
 import com.edu.aitutor.module.auth.dto.RegisterDTO;
 import com.edu.aitutor.module.auth.dto.SmsLoginDTO;
@@ -10,7 +9,9 @@ import com.edu.aitutor.module.user.dto.UserUpdateDTO;
 import com.edu.aitutor.module.auth.entity.AuthLoginLog;
 import com.edu.aitutor.module.user.entity.User;
 import com.edu.aitutor.module.auth.mapper.AuthLoginLogMapper;
+import com.edu.aitutor.module.auth.repository.RefreshTokenRedisRepository;
 import com.edu.aitutor.module.user.mapper.UserMapper;
+import com.edu.aitutor.framework.security.redis.AccessTokenBlacklistRedisRepository;
 import com.edu.aitutor.framework.security.AntiCrawlerGuard;
 import com.edu.aitutor.framework.security.RbacUserDetailsService;
 import com.edu.aitutor.framework.jwt.JwtUtil;
@@ -24,7 +25,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -65,8 +65,10 @@ public class AuthServiceImpl implements AuthService {
     private SmsService smsService;
     @Resource
     private JwtUtil jwtUtil;
-    @Resource(name = "stringRedisTemplate")
-    private StringRedisTemplate redisTemplate;
+    @Resource
+    private RefreshTokenRedisRepository refreshTokenRedisRepository;
+    @Resource
+    private AccessTokenBlacklistRedisRepository accessTokenBlacklistRedisRepository;
     @Resource
     private RbacUserDetailsService rbacUserDetailsService;
     @Resource
@@ -179,8 +181,7 @@ public class AuthServiceImpl implements AuthService {
             String jti = claims.getId();
             Long userId = Long.valueOf(claims.get("userId").toString());
             // 白名单校验：键必须存在，且归属与令牌中的 userId 一致
-            String storedUserId = redisTemplate.opsForValue()
-                    .get(String.format(RedisKeys.REFRESH_WHITELIST, jti));
+            String storedUserId = refreshTokenRedisRepository.findWhitelistUserId(jti);
             if (storedUserId == null || !storedUserId.equals(userId.toString())) {
                 throw new BusinessException(ErrorCode.TOKEN_INVALID, "登录凭证已失效，请重新登录");
             }
@@ -218,8 +219,7 @@ public class AuthServiceImpl implements AuthService {
         try {
             long remain = jwtUtil.getRemainingExpirationMillis(token);
             if (remain > 0) {
-                redisTemplate.opsForValue().set(
-                        String.format(RedisKeys.TOKEN_BLACKLIST, token), "1", Duration.ofMillis(remain));
+                accessTokenBlacklistRedisRepository.blacklist(token, Duration.ofMillis(remain));
             }
         } catch (Exception e) {
             // token 已失效则无需拉黑
@@ -232,9 +232,8 @@ public class AuthServiceImpl implements AuthService {
                 Claims claims = jwtUtil.parseToken(refreshToken);
                 String jti = claims.getId();
                 Long userId = Long.valueOf(claims.get("userId").toString());
-                redisTemplate.delete(String.format(RedisKeys.REFRESH_WHITELIST, jti));
-                redisTemplate.opsForSet()
-                        .remove(String.format(RedisKeys.REFRESH_USER_SET, userId), jti);
+                refreshTokenRedisRepository.deleteWhitelist(jti);
+                refreshTokenRedisRepository.removeUserJti(userId, jti);
             }
         } catch (Exception e) {
             // cookie 缺失或已过期，跳过白名单清理
@@ -299,13 +298,11 @@ public class AuthServiceImpl implements AuthService {
         String jti = jwtUtil.parseToken(refreshToken).getId();
 
         // 白名单 String：jti -> userId，TTL 与 refresh 有效期一致（7 天）
-        redisTemplate.opsForValue().set(
-                String.format(RedisKeys.REFRESH_WHITELIST, jti),
-                user.getId().toString(), Duration.ofDays(7));
+        refreshTokenRedisRepository.saveWhitelist(
+                jti, user.getId(), Duration.ofDays(7));
         // 用户 jti 集合：支撑登出清理与未来全设备下线，TTL 7 天兜底
-        String userSetKey = String.format(RedisKeys.REFRESH_USER_SET, user.getId());
-        redisTemplate.opsForSet().add(userSetKey, jti);
-        redisTemplate.expire(userSetKey, Duration.ofDays(7));
+        refreshTokenRedisRepository.addUserJti(
+                user.getId(), jti, Duration.ofDays(7));
 
         // HttpOnly cookie 下发，JS 无法读取
         writeRefreshCookie(response, refreshToken, Duration.ofDays(7));

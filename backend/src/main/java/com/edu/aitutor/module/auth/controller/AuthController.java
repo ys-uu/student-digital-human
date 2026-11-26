@@ -2,13 +2,13 @@ package com.edu.aitutor.module.auth.controller;
 
 import com.edu.aitutor.common.BusinessException;
 import com.edu.aitutor.common.ErrorCode;
-import com.edu.aitutor.common.RedisKeys;
 import com.edu.aitutor.common.Result;
 import com.edu.aitutor.module.auth.dto.PasswordLoginDTO;
 import com.edu.aitutor.module.auth.dto.RegisterDTO;
 import com.edu.aitutor.module.auth.dto.SmsCodeDTO;
 import com.edu.aitutor.module.auth.dto.SmsLoginDTO;
 import com.edu.aitutor.module.user.dto.UserUpdateDTO;
+import com.edu.aitutor.module.auth.repository.SmsLimitRedisRepository;
 import com.edu.aitutor.module.auth.service.AuthService;
 import com.edu.aitutor.module.auth.service.SmsService;
 import com.edu.aitutor.framework.web.ClientIpUtil;
@@ -21,7 +21,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -44,8 +43,8 @@ public class AuthController {
     private AuthService authService;
     @Resource
     private SmsService smsService;
-    @Resource(name = "stringRedisTemplate")
-    private StringRedisTemplate redisTemplate;
+    @Resource
+    private SmsLimitRedisRepository smsLimitRedisRepository;
 
     /** 允许源白名单，用于刷新接口的 Origin 校验，与 CORS 配置同源 */
     @Value("${cors.allow-origins}")
@@ -70,10 +69,7 @@ public class AuthController {
     /** 发送短信验证码（60s 频控） */
     @PostMapping("/auth/sms/code")
     public Result<SmsCodeVO> sendSmsCode(@Valid @RequestBody SmsCodeDTO dto) {
-        String limitKey = String.format(RedisKeys.SMS_LIMIT, dto.getPhone());
-        Boolean allowed = redisTemplate.opsForValue()
-                .setIfAbsent(limitKey, "1", Duration.ofSeconds(60));
-        if (!Boolean.TRUE.equals(allowed)) {
+        if (!smsLimitRedisRepository.tryAcquireSendLock(dto.getPhone(), Duration.ofSeconds(60))) {
             throw new BusinessException(ErrorCode.TOO_FREQUENT, "验证码发送过于频繁，请60秒后再试");
         }
         smsService.sendVerifyCode(dto.getPhone());

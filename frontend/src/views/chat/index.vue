@@ -18,7 +18,7 @@
       <div class="tabs">
         <button :class="{ on: tab === 'sessions' }" @click="tab = 'sessions'">
           会话
-          <em v-if="totalUnread > 0">{{ totalUnread > 99 ? '99+' : totalUnread }}</em>
+          <em v-if="unreadCount > 0">{{ unreadCount > 99 ? '99+' : unreadCount }}</em>
         </button>
         <button :class="{ on: tab === 'contacts' }" @click="openContacts">联系人</button>
       </div>
@@ -188,7 +188,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
@@ -229,19 +229,19 @@ const contactGroups = computed(() => {
   return groups
 })
 
-const totalUnread = computed(() =>
-  sessions.value.reduce((sum, s) => sum + (s.unreadCount || 0), 0)
-)
-
 // ==================== WebSocket ====================
 
 const {
   status,
+  unreadCount,
   send,
   sendWithRetry,
   sendRead,
   seedCursor,
-  getSeq
+  getSeq,
+  setUnreadList,
+  clearUnread,
+  setActiveConversation
 } = usePrivateSocket({
   onMessage: handleIncoming,
   onAck: handleAck,
@@ -332,10 +332,9 @@ function handleAck(data) {
     // ACK 带回 seq 后需要重新排序，保证与其他消息顺序一致
     messages.value = messages.value.slice().sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0))
   }
-  bumpSession(String(data.conversation_id), {
-    content: temp?.content || '',
-    create_time: data.create_time,
-    from_name: myName.value
+  updateSessionSummary(String(data.conversation_id), {
+    content: localPreview(temp),
+    create_time: data.create_time
   })
 }
 
@@ -369,7 +368,16 @@ function handleNotify(data) {
   ElMessage.info(data?.title || '收到新通知')
 }
 
-/** 更新或新建会话摘要，并累加未读 */
+function localPreview(msg) {
+  if (!msg) return '[消息]'
+  if (msg.content) return msg.content
+  if (msg.msgType === 2) return '[图片]'
+  if (msg.msgType === 3) return `[文件] ${msg.mediaName || ''}`.trim()
+  if (msg.msgType === 4) return '[语音]'
+  return '[消息]'
+}
+
+/** 接收方收到非当前会话消息时，更新摘要并累加未读。 */
 function bumpSession(convId, msg) {
   const idx = sessions.value.findIndex((s) => String(s.conversationId) === convId)
   if (idx >= 0) {
@@ -377,13 +385,25 @@ function bumpSession(convId, msg) {
     s.lastMessagePreview = msg.content || '[消息]'
     s.lastMessageAt = msg.create_time || new Date().toISOString()
     s.unreadCount = (s.unreadCount || 0) + 1
-    // 置顶
     sessions.value.splice(idx, 1)
     sessions.value.unshift(s)
   } else {
-    // 陌生会话（对方先发起），重新拉一次列表补齐对方信息
     loadSessions()
   }
+}
+
+/** 发送方收到 ACK 时只更新摘要，不增加自己的未读数。 */
+function updateSessionSummary(convId, msg) {
+  const idx = sessions.value.findIndex((s) => String(s.conversationId) === convId)
+  if (idx < 0) {
+    loadSessions()
+    return
+  }
+  const s = sessions.value[idx]
+  s.lastMessagePreview = msg.content || '[消息]'
+  s.lastMessageAt = msg.create_time || s.lastMessageAt
+  sessions.value.splice(idx, 1)
+  sessions.value.unshift(s)
 }
 
 // ==================== 数据加载 ====================
@@ -394,6 +414,7 @@ async function loadSessions() {
     const res = await listConversations({ page: 1, page_size: 50 })
     if (res.code === 200) {
       sessions.value = res.data?.list || []
+      setUnreadList(sessions.value)
     }
   } finally {
     loadingSessions.value = false
@@ -446,6 +467,8 @@ async function pickSession(session) {
   messages.value = []
   hasMore.value = false
   session.unreadCount = 0
+  clearUnread(session.conversationId)
+  setActiveConversation(session.conversationId)
   await reloadMessages()
 
   // 进入会话即视为已读。
@@ -782,6 +805,7 @@ function goBack() {
 }
 
 onMounted(loadSessions)
+onUnmounted(() => setActiveConversation(null))
 </script>
 
 <style scoped>

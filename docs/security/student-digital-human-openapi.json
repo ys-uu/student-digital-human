@@ -1,0 +1,283 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "学生数字人系统 - 越权测试接口集",
+    "description": "用于 Apifox 越权访问测试的最小接口集合，覆盖未认证、垂直越权（角色级）、水平越权（数据归属）三类场景。后端统一响应结构为 { code, msg, data }：未认证 401/1002，@PreAuthorize 垂直越权 403/1004，文件服务水平越权 HTTP 200 但 body code=1004。",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "本地后端"
+    }
+  ],
+  "tags": [
+    { "name": "1-认证", "description": "登录、登出" },
+    { "name": "2-数据大屏", "description": "仅教务 admin 可访问" },
+    { "name": "3-RBAC权限", "description": "仅教务通配权限可访问" },
+    { "name": "4-教师工作台", "description": "教师与教务可访问" },
+    { "name": "5-文件管理", "description": "登录即可，服务层做归属隔离" }
+  ],
+  "paths": {
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": ["1-认证"],
+        "summary": "账号密码登录",
+        "description": "白名单接口，无需 token。loginType：1 学号、2 工号。成功返回 accessToken（内存使用）与 refreshToken（HttpOnly Cookie，不在 body）。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PasswordLoginDTO" },
+              "examples": {
+                "学生": {
+                  "value": { "username": "学号", "password": "密码", "loginType": 1 }
+                },
+                "教师": {
+                  "value": { "username": "T2024001", "password": "12345678", "loginType": 2 }
+                },
+                "教务": {
+                  "value": { "username": "教务账号", "password": "密码", "loginType": 1 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LoginResult" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": ["1-认证"],
+        "summary": "退出登录",
+        "description": "清 access 黑名单、refresh 白名单并作废 cookie。用于测试令牌吊销。",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/dashboard/overview": {
+      "get": {
+        "tags": ["2-数据大屏"],
+        "summary": "大屏总览（仅 admin）",
+        "description": "@PreAuthorize 仅教务角色可访问。学生、教师 token 应返回 403/1004。",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/v1/rbac/roles": {
+      "get": {
+        "tags": ["3-RBAC权限"],
+        "summary": "角色列表（仅 system:role:list）",
+        "description": "教务凭通配 *:* 放行；学生、教师无 system:* 权限，应 403/1004。",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/v1/rbac/users": {
+      "get": {
+        "tags": ["3-RBAC权限"],
+        "summary": "用户分页列表（仅 system:user:list）",
+        "description": "教务凭通配放行；学生、教师应 403/1004。",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "keyword", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "page", "in": "query", "required": false, "schema": { "type": "integer", "default": 1 } },
+          { "name": "size", "in": "query", "required": false, "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/v1/teacher/homework/quick": {
+      "post": {
+        "tags": ["4-教师工作台"],
+        "summary": "一键布置随堂练习（homework:create）",
+        "description": "教师持 homework:create、教务凭通配可访问；学生应 403/1004。无请求体。",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/v1/files/presign": {
+      "post": {
+        "tags": ["5-文件管理"],
+        "summary": "申请预签名上传 URL",
+        "description": "登录即可。记录归属当前用户，返回 fileId 供水平越权测试使用。",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PresignDTO" },
+              "example": { "fileName": "test.txt", "fileType": "txt", "bizType": 1, "fileSize": 100 }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/files/{id}/confirm": {
+      "post": {
+        "tags": ["5-文件管理"],
+        "summary": "上传完成确认（水平越权）",
+        "description": "用他人 token 确认他人文件 id，服务层归属校验拒绝：HTTP 200、body code=1004。",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" }, "description": "文件记录 ID" },
+          { "name": "fileHash", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/files/{id}/download-url": {
+      "get": {
+        "tags": ["5-文件管理"],
+        "summary": "申请预签名下载 URL（水平越权）",
+        "description": "用他人 token 下载他人文件 id，服务层归属校验拒绝：HTTP 200、body code=1004。",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" }, "description": "文件记录 ID" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/files": {
+      "get": {
+        "tags": ["5-文件管理"],
+        "summary": "文件分页列表（仅本人数据）",
+        "description": "服务层按当前用户过滤，列表不应出现他人文件。",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "bizType", "in": "query", "required": false, "schema": { "type": "integer" } },
+          { "name": "keyword", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "page", "in": "query", "required": false, "schema": { "type": "integer", "default": 1 } },
+          { "name": "page_size", "in": "query", "required": false, "schema": { "type": "integer", "default": 10 } }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ok" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "填入登录返回的 accessToken，无需加 Bearer 前缀，Apifox 会自动拼接。"
+      }
+    },
+    "schemas": {
+      "PasswordLoginDTO": {
+        "type": "object",
+        "required": ["username", "password", "loginType"],
+        "properties": {
+          "username": { "type": "string", "description": "学号或工号" },
+          "password": { "type": "string", "description": "登录密码" },
+          "loginType": { "type": "integer", "description": "1 学号、2 工号", "enum": [1, 2] },
+          "deviceId": { "type": "string", "description": "可选设备标识" }
+        }
+      },
+      "PresignDTO": {
+        "type": "object",
+        "required": ["fileName", "fileType", "bizType"],
+        "properties": {
+          "fileName": { "type": "string", "description": "原始文件名" },
+          "fileType": { "type": "string", "description": "扩展名，如 pdf / txt" },
+          "bizType": { "type": "integer", "description": "1 知识库 2 聊天媒体 3 头像 4 数字人 9 其他" },
+          "fileSize": { "type": "integer", "format": "int64", "description": "文件大小（字节），可选" }
+        }
+      },
+      "LoginResult": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer", "example": 200 },
+          "msg": { "type": "string", "example": "success" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "accessToken": { "type": "string" },
+              "expiresIn": { "type": "integer", "example": 7200 },
+              "tokenType": { "type": "string", "example": "Bearer" },
+              "user": { "type": "object", "description": "用户信息与 permissions 列表" }
+            }
+          }
+        }
+      },
+      "Result": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "integer" },
+          "msg": { "type": "string" },
+          "data": { "type": "object", "nullable": true }
+        }
+      }
+    },
+    "responses": {
+      "Ok": {
+        "description": "业务处理结果（成功 code=200；水平越权也走 HTTP 200 但 body code=1004）",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Result" }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "未认证：HTTP 401，body code=1002",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Result" },
+            "example": { "code": 1002, "msg": "未登录或登录已过期，请重新登录", "data": null }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "垂直越权：HTTP 403，body code=1004",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Result" },
+            "example": { "code": 1004, "msg": "权限不足，禁止访问", "data": null }
+          }
+        }
+      }
+    }
+  }
+}
