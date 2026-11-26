@@ -1,14 +1,12 @@
 package com.edu.aitutor.module.dashboard.service;
 
+import com.edu.aitutor.common.RedisKeys;
 import com.edu.aitutor.module.dashboard.mapper.DashboardMapper;
+import com.edu.aitutor.module.dashboard.repository.DashboardCacheRedisRepository;
 import com.edu.aitutor.module.dashboard.vo.DashboardAnalyticsSnapshot;
 import com.edu.aitutor.module.dashboard.vo.DashboardOverviewVO;
 import jakarta.annotation.Resource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
-import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -28,14 +26,9 @@ import java.util.concurrent.ThreadLocalRandom;
 @Service
 public class DashboardServiceImpl implements DashboardService {
 
-    private static final Logger log = LoggerFactory.getLogger(DashboardServiceImpl.class);
-
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private static final String[] SCENE_NAMES = {"自由答疑", "拍照搜题", "作业辅导", "课堂追问", "备考"};
-
-    /** 图表缓存 key 前缀 */
-    private static final String CACHE_PREFIX = "dashboard:analytics:";
 
     /** 缓存基础 TTL（秒） */
     private static final long CACHE_TTL_SECONDS = 60L;
@@ -46,11 +39,8 @@ public class DashboardServiceImpl implements DashboardService {
     @Resource
     private DashboardMapper dashboardMapper;
 
-    @Resource(name = "stringRedisTemplate")
-    private StringRedisTemplate redisTemplate;
-
     @Resource
-    private ObjectMapper objectMapper;
+    private DashboardCacheRedisRepository dashboardCacheRedisRepository;
 
     @Override
     public DashboardOverviewVO overview(int days, Long courseId) {
@@ -63,11 +53,14 @@ public class DashboardServiceImpl implements DashboardService {
         vo.setLiveEvents(dashboardMapper.selectLiveEvents());
 
         // 图表聚合结果走缓存，降低重复聚合查询压力
-        String cacheKey = CACHE_PREFIX + days + ":" + (courseId == null ? "all" : courseId);
-        DashboardAnalyticsSnapshot snapshot = readCache(cacheKey);
+        String cacheKey = RedisKeys.DASHBOARD_ANALYTICS_PREFIX
+                + days + ":" + (courseId == null ? "all" : courseId);
+        DashboardAnalyticsSnapshot snapshot = dashboardCacheRedisRepository.findAnalytics(cacheKey);
         if (snapshot == null) {
             snapshot = buildAnalytics(start, courseId);
-            writeCache(cacheKey, snapshot);
+            long ttl = CACHE_TTL_SECONDS + ThreadLocalRandom.current().nextLong(CACHE_TTL_JITTER_SECONDS);
+            dashboardCacheRedisRepository.saveAnalytics(
+                    cacheKey, snapshot, Duration.ofSeconds(ttl));
         }
         applyAnalytics(vo, snapshot);
 
@@ -110,29 +103,6 @@ public class DashboardServiceImpl implements DashboardService {
         vo.setClassCompare(snapshot.getClassCompare());
         vo.setWarnings(snapshot.getWarnings());
         vo.setAiUsage(snapshot.getAiUsage());
-    }
-
-    private DashboardAnalyticsSnapshot readCache(String key) {
-        try {
-            String json = redisTemplate.opsForValue().get(key);
-            if (json == null || json.isBlank()) {
-                return null;
-            }
-            return objectMapper.readValue(json, DashboardAnalyticsSnapshot.class);
-        } catch (Exception e) {
-            log.warn("读取大屏缓存失败，回退直查数据库：{}", e.getMessage());
-            return null;
-        }
-    }
-
-    private void writeCache(String key, DashboardAnalyticsSnapshot snapshot) {
-        try {
-            String json = objectMapper.writeValueAsString(snapshot);
-            long ttl = CACHE_TTL_SECONDS + ThreadLocalRandom.current().nextLong(CACHE_TTL_JITTER_SECONDS);
-            redisTemplate.opsForValue().set(key, json, Duration.ofSeconds(ttl));
-        } catch (Exception e) {
-            log.warn("写入大屏缓存失败：{}", e.getMessage());
-        }
     }
 
     private DashboardOverviewVO.Summary buildSummary(LocalDate start, Long courseId) {

@@ -47,7 +47,7 @@ import java.util.UUID;
  * 变更点：
  *   · 消息本体 → MongoDB 集合 private_message（支持文本/图片/文件/音频）；
  *   · 会话摘要 → 仍在 MySQL（参与列表分页与 JOIN，属强关系数据）；
- *   · 消息主键 id → 由 MySQL 序列表 message_id_seq 集中分配（Mongo 无自增主键）；
+ *   · 消息主键 id → 由 MongoDB message_counter 原子自增分配；
  *   · 会话内序号 seq → 仍由 Redis INCR 发号，逻辑不变。
  *
  * 为什么消息适合文档库：
@@ -71,15 +71,14 @@ public class PrivateMessageService {
     /**
      * 消息仓储（MongoDB）。
      * <p>
-     * v1.9 起由原 PrivateMessageMapper（MySQL）替换为本文档仓储。
-     * 方法语义一一对应，只是底层存储换成文档数据库，
+     * 消息数据统一由 MongoDB 文档仓储管理，
      * 以支持文本/图片/文件/音频四种结构差异较大的消息体。
      */
     private final PrivateMessageMongoRepository messageRepository;
     private final PrivatePushService pushService;
     private final UserMapper userMapper;
     private final MessageSeqService seqService;
-    /** 全局消息 ID 分配器（MongoDB 无自增主键，由 MySQL 序列表集中分配） */
+    /** 全局消息 ID 分配器（基于 MongoDB message_counter 原子自增） */
     private final MessageIdGenerator idGenerator;
 
     public PrivateMessageService(PrivatePermissionService permissionService,
@@ -177,7 +176,7 @@ public class PrivateMessageService {
         long seq = seqService.nextSeq(conversation.getId(), dbMaxSeq);
 
         // ④.5 分配全局消息 id（v1.9 新增）
-        // MongoDB 没有 AUTO_INCREMENT，必须由 MySQL 序列表集中分配，
+        // MongoDB 没有 AUTO_INCREMENT，必须由 message_counter 原子自增分配，
         // 保证 id 全局单调递增——这是离线补拉按 id 判新旧的前提。
         // 注意与 seq 的分工：id 管跨会话新旧，seq 管会话内顺序。
         long messageId = idGenerator.nextId();
@@ -593,8 +592,8 @@ public class PrivateMessageService {
     /**
      * 实体转 VO，ID 统一转字符串防前端精度丢失。
      * <p>
-     * v1.9：入参由 PrivateMessage（MySQL 实体）改为 PrivateMessageDocument（Mongo 文档），
-     * 并补上媒体相关字段（mediaSize / mediaDuration / mediaName），
+     * 入参使用 PrivateMessageDocument（Mongo 文档），
+     * 并包含媒体相关字段（mediaSize / mediaDuration / mediaName），
      * 前端据此渲染图片尺寸占位与音频时长。
      */
     private MessageVO toVO(PrivateMessageDocument message) {

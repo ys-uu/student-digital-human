@@ -6,6 +6,7 @@ import com.edu.aitutor.framework.security.SecurityUtils;
 import com.edu.aitutor.module.privatechat.dto.CreateConversationDTO;
 import com.edu.aitutor.module.privatechat.dto.SendPrivateMessageDTO;
 import com.edu.aitutor.module.privatechat.mapper.PrivatePermissionMapper;
+import com.edu.aitutor.module.privatechat.service.OnlineUserService;
 import com.edu.aitutor.module.privatechat.service.PrivateMessageService;
 import com.edu.aitutor.module.privatechat.vo.ConversationVO;
 import com.edu.aitutor.module.privatechat.vo.MessageVO;
@@ -50,6 +51,9 @@ public class PrivateChatController {
 
     @Resource
     private UserMapper userMapper;
+
+    @Resource
+    private OnlineUserService onlineUserService;
 
     /** 18.5.1 会话列表 */
     @GetMapping("/conversations")
@@ -151,8 +155,8 @@ public class PrivateChatController {
             item.put("role", row.get("role"));
             item.put("avatar_url", row.get("avatar_url"));
             item.put("relation", row.get("relation"));
-            // 在线状态由 Redis 决定，此处仅占位，前端以 WebSocket 推送为准时可忽略
-            item.put("online", Boolean.FALSE);
+            Long peerId = Long.valueOf(String.valueOf(row.get("user_id")));
+            item.put("online", onlineUserService.isOnline(peerId));
             result.add(item);
         }
         return Result.success(result);

@@ -1,6 +1,6 @@
 package com.edu.aitutor.module.privatechat.service;
 
-import com.edu.aitutor.common.RedisKeys;
+import com.edu.aitutor.module.privatechat.repository.redis.PrivateChannelRedisRepository;
 import com.edu.aitutor.module.privatechat.vo.MessageVO;
 import com.edu.aitutor.module.privatechat.websocket.WsPacket;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -8,7 +8,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -41,14 +40,14 @@ public class PrivatePushService implements MessageListener {
     private final String originId = UUID.randomUUID().toString();
 
     private final OnlineUserService onlineUserService;
-    private final StringRedisTemplate redisTemplate;
+    private final PrivateChannelRedisRepository privateChannelRedisRepository;
     /** Spring Boot 4 默认装配 Jackson 3，此处沿用大屏 handler 的 Jackson 2 实例 */
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public PrivatePushService(OnlineUserService onlineUserService,
-                              StringRedisTemplate redisTemplate) {
+                              PrivateChannelRedisRepository privateChannelRedisRepository) {
         this.onlineUserService = onlineUserService;
-        this.redisTemplate = redisTemplate;
+        this.privateChannelRedisRepository = privateChannelRedisRepository;
     }
 
     /**
@@ -103,7 +102,7 @@ public class PrivatePushService implements MessageListener {
         // 携带有 originId，收到自己发的消息时跳过（见 onMessage），避免重复推送。
         // 单实例部署时这段也会执行，只是没有别的实例接收，无副作用。
         try {
-            redisTemplate.convertAndSend(RedisKeys.WS_PRIVATE_CHANNEL, originId + "|" + receiverId + "|" + json);
+            privateChannelRedisRepository.publish(originId + "|" + receiverId + "|" + json);
         } catch (Exception e) {
             // Pub/Sub 失败不影响本机推送；其他实例上的连接由客户端补拉兜底
             log.warn("广播私信推送失败，receiverId={}：{}", receiverId, e.getMessage());
@@ -123,7 +122,7 @@ public class PrivatePushService implements MessageListener {
         }
         deliverLocal(userId, json, null);
         try {
-            redisTemplate.convertAndSend(RedisKeys.WS_PRIVATE_CHANNEL, originId + "|" + userId + "|" + json);
+            privateChannelRedisRepository.publish(originId + "|" + userId + "|" + json);
         } catch (Exception e) {
             log.warn("广播通知推送失败，userId={}：{}", userId, e.getMessage());
         }
@@ -211,7 +210,10 @@ public class PrivatePushService implements MessageListener {
         data.put("content", vo.getContent());
         data.put("msg_type", vo.getMsgType());
         data.put("media_url", vo.getMediaUrl());
-        data.put("create_time", vo.getCreateTime());
+        data.put("media_size", vo.getMediaSize());
+        data.put("media_duration", vo.getMediaDuration());
+        data.put("media_name", vo.getMediaName());
+        data.put("create_time", vo.getCreateTime() == null ? null : vo.getCreateTime().toString());
         return data;
     }
 

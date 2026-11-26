@@ -3,7 +3,6 @@ package com.edu.aitutor.module.privatechat.document;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.index.CompoundIndexes;
-import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.Field;
 
@@ -42,8 +41,8 @@ import java.time.LocalDateTime;
  * ============================================================================
  * 【字段设计要点】
  * ----------------------------------------------------------------------------
- * · id      ：业务主键，由应用层分配（MySQL 并发自增序列表），全局单调递增。
- *             用途同原 MySQL 自增主键：仅作跨会话"新旧"判断与游标，不参与会话内排序。
+ * · id      ：业务主键，由 MongoDB message_counter 原子自增分配，全局单调递增。
+ *             仅作跨会话"新旧"判断与游标，不参与会话内排序。
  * · seq     ：会话内单调递增序号，由 Redis INCR 发号（MessageSeqService）。
  *             用途：会话内排序、空洞检测、已读/送达游标。
  *             与 id 的分工：seq 管会话内有序，id 管跨会话新旧。
@@ -69,7 +68,6 @@ public class PrivateMessageDocument {
     private Long id;
 
     /** 所属会话，引用 MySQL private_conversation.id（不建物理外键） */
-    @Indexed(name = "idx_conversation")
     @Field("conversationId")
     private Long conversationId;
 
@@ -82,7 +80,6 @@ public class PrivateMessageDocument {
     private Long senderId;
 
     /** 接收者 user_id，引用 MySQL sys_user.id；冗余存储便于按接收者补拉 */
-    @Indexed(name = "idx_receiver")
     @Field("receiverId")
     private Long receiverId;
 

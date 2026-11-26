@@ -13,39 +13,15 @@ import java.util.List;
 
 /**
  * 私信消息仓储（MongoDB）。
- *
- * ============================================================================
- * 【本类职责：替代原 PrivateMessageMapper】
- * ----------------------------------------------------------------------------
- * 原实现用 MyBatis 注解 SQL 操作 MySQL，现改由 MongoTemplate 构造查询。
- * 方法语义与原 Mapper 一一对应，便于对照理解：
- *
- *   原 Mapper 方法                     →  本类方法
- *   ─────────────────────────────────────────────────────────────
- *   selectMaxSeq(convId)               →  selectMaxSeq(convId)
- *   insert(message)                    →  insert(doc)
- *   selectByClientId(sender, cid)      →  selectByClientId(sender, clientMsgId)
- *   selectById(id)                     →  selectById(id)
- *   selectBySeqCursor(conv, before, n) →  selectBySeqCursor(conv, beforeSeq, size)
- *   selectSeqRange(conv, after, up, n) →  selectSeqRange(conv, afterSeq, upToSeq, size)
- *   selectOfflineSinceMsgId(uid, id,n) →  selectOfflineSinceMsgId(userId, afterMsgId, size)
- *   markDeliveredUpToSeq(...)          →  markDeliveredUpToSeq(...)
- *   markReadUpToSeq(...)               →  markReadUpToSeq(...)
- *
- * ============================================================================
- * 【为什么用 MongoTemplate 而不是 MongoRepository】
- * ----------------------------------------------------------------------------
- * MongoRepository 只适合简单的 CRUD；本模块大量使用游标分页、区间查询、
- * 批量更新等组合条件，用 MongoTemplate 构造 Query 更直观、可控，
- * 且能精确控制排序、limit 与索引命中。
- *
- * ============================================================================
- * 【主键分配策略】
- * ----------------------------------------------------------------------------
- * 原 MySQL 用 AUTO_INCREMENT，现 Mongo 无自增主键，因此由 {@code MessageIdGenerator}
- * 通过 MySQL 的序列表集中分配，保证 id 全局单调递增——这是离线补拉
- * （按 id 游标跨会话判新旧）能工作的前提。详见 MessageIdGenerator。
- * ============================================================================
+ * <p>
+ * 统一封装 private_message 集合的写入、游标分页、区间查询和状态回写，
+ * 业务层不直接拼接 MongoTemplate 查询。
+ * <p>
+ * 本模块存在游标分页、区间查询、批量更新等组合条件，因此使用 MongoTemplate
+ * 而不是只适合简单 CRUD 的 MongoRepository。
+ * <p>
+ * 全局消息 ID 由 {@link MessageIdGenerator} 基于 message_counter 集合原子自增分配，
+ * 保证 id 全局单调递增，以支持离线补拉按 id 判断新旧。
  */
 @Repository
 public class PrivateMessageMongoRepository {

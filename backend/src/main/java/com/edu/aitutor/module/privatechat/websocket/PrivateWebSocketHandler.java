@@ -491,7 +491,10 @@ public class PrivateWebSocketHandler extends TextWebSocketHandler {
         data.put("content", vo.getContent());
         data.put("msg_type", vo.getMsgType());
         data.put("media_url", vo.getMediaUrl());
-        data.put("create_time", vo.getCreateTime());
+        data.put("media_size", vo.getMediaSize());
+        data.put("media_duration", vo.getMediaDuration());
+        data.put("media_name", vo.getMediaName());
+        data.put("create_time", vo.getCreateTime() == null ? null : vo.getCreateTime().toString());
         return data;
     }
 

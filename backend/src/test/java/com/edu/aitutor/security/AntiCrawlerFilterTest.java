@@ -3,6 +3,7 @@ package com.edu.aitutor.security;
 import com.edu.aitutor.framework.security.AntiCrawlerFilter;
 import com.edu.aitutor.framework.security.AntiCrawlerGuard;
 import com.edu.aitutor.framework.config.AntiCrawlerProperties;
+import com.edu.aitutor.framework.security.redis.AntiCrawlerRedisRepository;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -158,7 +159,8 @@ class AntiCrawlerFilterTest {
         private final List<String> bans = new ArrayList<>();
 
         private FakeGuard(AntiCrawlerProperties properties) {
-            super(null, properties);
+            // 内存 Fake 不访问 Redis，Repository 入参传 null
+            super((AntiCrawlerRedisRepository) null, properties);
         }
 
         @Override

@@ -44,6 +44,7 @@
           <!-- 私信入口：学生与教师可用，管理员不参与私信故不展示 -->
           <button v-if="role !== 'admin'" class="icon-btn" title="私信" @click="$router.push('/chat')">
             <Icon name="chat" />
+            <em v-if="unreadCount > 0" class="chat-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</em>
           </button>
           <span class="role-pill">{{ meta.label }}</span>
           <button class="icon-btn" @click="open('通知中心')" title="通知">
@@ -87,6 +88,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
+import { usePrivateSocket } from '../composables/usePrivateSocket'
 import { ElMessage } from 'element-plus'
 import Icon from './Icon.vue'
 import ThemeSwitcher from './ThemeSwitcher.vue'
@@ -96,6 +98,7 @@ import menus from '../config/menus.js'
 const props = defineProps({ role: { type: String, required: true } })
 const router = useRouter()
 const userStore = useUserStore()
+const { unreadCount } = usePrivateSocket()
 
 const meta = computed(() => menus[props.role].meta)
 const groups = computed(() => menus[props.role].groups)
@@ -192,6 +195,12 @@ const handleLogout = async () => { await userStore.logout(); router.push('/login
 .icon-btn:hover { color: var(--accent); border-color: var(--accent); }
 .icon-btn .ic { width: 17px; height: 17px; }
 .icon-btn .dot { position: absolute; top: 7px; right: 8px; width: 6px; height: 6px; border-radius: 50%; background: #ef4444; }
+.chat-badge {
+  position: absolute; top: -5px; right: -5px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 9px; background: #ef4444; color: #fff;
+  font-size: 10px; font-style: normal; line-height: 16px; text-align: center;
+}
 
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 13px; margin-bottom: 22px; }
 .stat { padding: 15px 17px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }

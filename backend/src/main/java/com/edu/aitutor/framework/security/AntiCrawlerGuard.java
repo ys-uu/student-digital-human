@@ -4,15 +4,12 @@ import com.edu.aitutor.common.BusinessException;
 import com.edu.aitutor.common.ErrorCode;
 import com.edu.aitutor.common.RedisKeys;
 import com.edu.aitutor.framework.config.AntiCrawlerProperties;
+import com.edu.aitutor.framework.security.redis.AntiCrawlerRedisRepository;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 反爬虫风控组件：Redis 滑动窗口限流、违规计数、临时封禁、登录失败锁定。
@@ -24,46 +21,12 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class AntiCrawlerGuard {
 
-    /**
-     * 滑动窗口限流脚本：清理窗口外的记录，未超限则写入当前请求并返回剩余额度。
-     * 返回 {是否放行(1/0), 剩余额度, 建议重试毫秒数}。
-     */
-    private static final String SLIDING_WINDOW_LUA = """
-            local key = KEYS[1]
-            local now = tonumber(ARGV[1])
-            local window = tonumber(ARGV[2])
-            local limit = tonumber(ARGV[3])
-            local member = ARGV[4]
-
-            redis.call('ZREMRANGEBYSCORE', key, '-inf', now - window)
-            local count = redis.call('ZCARD', key)
-
-            if count < limit then
-                redis.call('ZADD', key, now, member)
-                redis.call('PEXPIRE', key, window)
-                return {1, limit - count - 1, 0}
-            end
-
-            local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
-            local retry = window
-            if oldest[2] then
-                retry = window - (now - tonumber(oldest[2]))
-                if retry < 1 then
-                    retry = 1
-                end
-            end
-            return {0, 0, retry}
-            """;
-
-    @SuppressWarnings("rawtypes")
-    private static final DefaultRedisScript<List> RATE_LIMIT_SCRIPT =
-            new DefaultRedisScript<>(SLIDING_WINDOW_LUA, List.class);
-
-    private final StringRedisTemplate redisTemplate;
+    private final AntiCrawlerRedisRepository antiCrawlerRedisRepository;
     private final AntiCrawlerProperties properties;
 
-    public AntiCrawlerGuard(StringRedisTemplate redisTemplate, AntiCrawlerProperties properties) {
-        this.redisTemplate = redisTemplate;
+    public AntiCrawlerGuard(AntiCrawlerRedisRepository antiCrawlerRedisRepository,
+                            AntiCrawlerProperties properties) {
+        this.antiCrawlerRedisRepository = antiCrawlerRedisRepository;
         this.properties = properties;
     }
 
@@ -71,8 +34,7 @@ public class AntiCrawlerGuard {
 
     public boolean isBanned(String ip) {
         try {
-            return Boolean.TRUE.equals(
-                    redisTemplate.hasKey(String.format(RedisKeys.ANTI_BAN, ip)));
+            return antiCrawlerRedisRepository.banExists(ip);
         } catch (Exception e) {
             log.warn("反爬封禁状态查询失败，降级放行 ip={} err={}", ip, e.getMessage());
             return false;
@@ -81,8 +43,7 @@ public class AntiCrawlerGuard {
 
     public long getBanRemainingSeconds(String ip) {
         try {
-            Long ttl = redisTemplate.getExpire(String.format(RedisKeys.ANTI_BAN, ip), TimeUnit.SECONDS);
-            return ttl == null || ttl < 0 ? 0 : ttl;
+            return antiCrawlerRedisRepository.getBanTtlSeconds(ip);
         } catch (Exception e) {
             return 0;
         }
@@ -97,13 +58,13 @@ public class AntiCrawlerGuard {
             return;
         }
         try {
-            String key = String.format(RedisKeys.ANTI_VIOLATION, ip);
-            Long count = redisTemplate.opsForValue().increment(key);
-            if (count == null) {
+            long count = antiCrawlerRedisRepository.incrementViolation(ip);
+            if (count == 0) {
                 return;
             }
             if (count == 1L) {
-                redisTemplate.expire(key, Duration.ofSeconds(Math.max(1, ban.getViolationWindowSeconds())));
+                antiCrawlerRedisRepository.expireViolation(
+                        ip, Duration.ofSeconds(Math.max(1, ban.getViolationWindowSeconds())));
             }
             if (count >= Math.max(1, ban.getViolationThreshold())) {
                 ban(ip, reason + ":count=" + count);
@@ -123,11 +84,9 @@ public class AntiCrawlerGuard {
         }
         try {
             int seconds = Math.max(1, ban.getDurationSeconds());
-            redisTemplate.opsForValue().set(
-                    String.format(RedisKeys.ANTI_BAN, ip),
-                    reason == null ? "blocked" : reason,
-                    Duration.ofSeconds(seconds));
-            redisTemplate.delete(String.format(RedisKeys.ANTI_VIOLATION, ip));
+            antiCrawlerRedisRepository.saveBan(
+                    ip, reason == null ? "blocked" : reason, Duration.ofSeconds(seconds));
+            antiCrawlerRedisRepository.deleteViolation(ip);
             log.warn("触发反爬封禁 ip={} reason={} duration={}s", ip, reason, seconds);
         } catch (Exception e) {
             log.warn("反爬封禁写入失败 ip={} err={}", ip, e.getMessage());
@@ -139,20 +98,12 @@ public class AntiCrawlerGuard {
     /**
      * 滑动窗口限流：同一 IP 在窗口内超过规则上限则拒绝。
      */
-    @SuppressWarnings("unchecked")
     public RateLimitResult checkRateLimit(String ip, AntiCrawlerProperties.Rule rule) {
         int limit = Math.max(1, rule.getLimit());
         int windowSeconds = Math.max(1, rule.getWindowSeconds());
-        String key = String.format(RedisKeys.ANTI_RATE_LIMIT, rule.getName(), ip);
-        long now = System.currentTimeMillis();
         try {
-            List<Long> result = (List<Long>) redisTemplate.execute(
-                    RATE_LIMIT_SCRIPT,
-                    List.of(key),
-                    String.valueOf(now),
-                    String.valueOf(windowSeconds * 1000L),
-                    String.valueOf(limit),
-                    now + ":" + UUID.randomUUID());
+            List<Long> result = antiCrawlerRedisRepository.executeSlidingWindow(
+                    rule.getName(), ip, limit, windowSeconds);
             if (result == null || result.size() < 3) {
                 return RateLimitResult.allowed(limit);
             }
@@ -178,8 +129,10 @@ public class AntiCrawlerGuard {
             return;
         }
         try {
-            long accountTtl = remainingSeconds(RedisKeys.LOGIN_LOCK_ACCOUNT, account);
-            long ipTtl = remainingSeconds(RedisKeys.LOGIN_LOCK_IP, ip);
+            long accountTtl = antiCrawlerRedisRepository.getTtlSeconds(
+                    RedisKeys.LOGIN_LOCK_ACCOUNT, account);
+            long ipTtl = antiCrawlerRedisRepository.getTtlSeconds(
+                    RedisKeys.LOGIN_LOCK_IP, ip);
             long ttl = Math.max(accountTtl, ipTtl);
             if (ttl > 0) {
                 throw new BusinessException(ErrorCode.TOO_FREQUENT,
@@ -201,15 +154,23 @@ public class AntiCrawlerGuard {
             return;
         }
         try {
-            long accountCount = increment(RedisKeys.LOGIN_FAIL_ACCOUNT, account, login.getWindowSeconds());
+            long accountCount = antiCrawlerRedisRepository.incrementAndExpire(
+                    RedisKeys.LOGIN_FAIL_ACCOUNT, account,
+                    Duration.ofSeconds(Math.max(1, login.getWindowSeconds())));
             if (accountCount >= Math.max(1, login.getMaxFailures())) {
-                lock(RedisKeys.LOGIN_LOCK_ACCOUNT, account, login.getLockSeconds());
+                antiCrawlerRedisRepository.setMarker(
+                        RedisKeys.LOGIN_LOCK_ACCOUNT, account,
+                        Duration.ofSeconds(Math.max(1, login.getLockSeconds())));
                 log.warn("账号登录失败次数超限，临时锁定 account={} ip={}", mask(account), ip);
             }
 
-            long ipCount = increment(RedisKeys.LOGIN_FAIL_IP, ip, login.getWindowSeconds());
+            long ipCount = antiCrawlerRedisRepository.incrementAndExpire(
+                    RedisKeys.LOGIN_FAIL_IP, ip,
+                    Duration.ofSeconds(Math.max(1, login.getWindowSeconds())));
             if (ipCount >= Math.max(1, login.getMaxIpFailures())) {
-                lock(RedisKeys.LOGIN_LOCK_IP, ip, login.getLockSeconds());
+                antiCrawlerRedisRepository.setMarker(
+                        RedisKeys.LOGIN_LOCK_IP, ip,
+                        Duration.ofSeconds(Math.max(1, login.getLockSeconds())));
                 log.warn("IP 登录失败次数超限，临时锁定 ip={}", ip);
             }
         } catch (Exception e) {
@@ -222,35 +183,14 @@ public class AntiCrawlerGuard {
      */
     public void clearLoginFailure(String account) {
         try {
-            redisTemplate.delete(String.format(RedisKeys.LOGIN_FAIL_ACCOUNT, account));
-            redisTemplate.delete(String.format(RedisKeys.LOGIN_LOCK_ACCOUNT, account));
+            antiCrawlerRedisRepository.delete(RedisKeys.LOGIN_FAIL_ACCOUNT, account);
+            antiCrawlerRedisRepository.delete(RedisKeys.LOGIN_LOCK_ACCOUNT, account);
         } catch (Exception e) {
             log.warn("登录失败计数清理失败 account={} err={}", mask(account), e.getMessage());
         }
     }
 
     // ==================== 私有辅助 ====================
-
-    private long increment(String pattern, String id, int windowSeconds) {
-        String key = String.format(pattern, id);
-        Long value = redisTemplate.opsForValue().increment(key);
-        if (value != null && value == 1L) {
-            redisTemplate.expire(key, Duration.ofSeconds(Math.max(1, windowSeconds)));
-        }
-        return value == null ? 0 : value;
-    }
-
-    private void lock(String pattern, String id, int lockSeconds) {
-        redisTemplate.opsForValue().set(
-                String.format(pattern, id),
-                "1",
-                Duration.ofSeconds(Math.max(1, lockSeconds)));
-    }
-
-    private long remainingSeconds(String pattern, String id) {
-        Long ttl = redisTemplate.getExpire(String.format(pattern, id), TimeUnit.SECONDS);
-        return ttl == null || ttl < 0 ? 0 : ttl;
-    }
 
     private static long toLong(Object value) {
         return value instanceof Number number ? number.longValue() : 0L;

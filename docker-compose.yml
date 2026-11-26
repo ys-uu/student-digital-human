@@ -55,6 +55,8 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - mongo-data:/data/db
+      # 仅在数据卷首次初始化时自动执行；已有数据卷需手动用 mongosh 执行该脚本
+      - ./docs/mongo/init-private-chat.js:/docker-entrypoint-initdb.d/init-private-chat.js:ro
     healthcheck:
       # 带认证的 ping，确保容器真正可服务而不只是进程活着
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
