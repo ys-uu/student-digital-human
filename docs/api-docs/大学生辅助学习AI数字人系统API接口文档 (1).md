@@ -4,6 +4,8 @@
 > **适用产品**：大学生辅助学习 AI 数字人系统  
 > **对接对象**：Web 前端（H5 / PC）、移动端 H5、第三方校园系统  
 > **文档内容**：已实现接口说明、待完成接口规划及通用对接规范
+> **代码核对基线**：2026-11-28，当前工作区提交 `ae090c4`
+> **重要说明**：✅ 仅表示当前源码中已有对应路由及业务代码，不代表已经完成运行期联调或验收；后续代码变更后应同步更新本文档。
 
 ---
 
@@ -41,9 +43,9 @@
 
 | 符号 | 含义 | 状态/范围 |
 | --- | --- | --- |
-| ✅ | 当前核心接口，需保持兼容 | 核心业务 |
-| 🟡 | 后续迭代接口 | 待完成 |
-| 🟢 | 后续扩展接口 | 待完成 |
+| ✅ | 当前源码已有对应接口 | 仅证明代码存在，仍需运行期联调与验收 |
+| 🟡 | 后续迭代接口 | 当前源码未实现，待开发 |
+| 🟢 | 后续扩展接口 | 当前源码未实现，可作为第二阶段功能 |
 | 🔒 | 需要鉴权 | - |
 | 📌 | 关键业务接口 | - |
 
@@ -57,6 +59,23 @@
 | 同类题 | 与错题知识点相同、难度相近的题目（FR-04） |
 | 记忆曲线 | 艾宾浩斯遗忘曲线驱动的复习任务编排（FR-05） |
 | 掌握度 | 基于答题统计综合计算的知识点得分（0-100）（FR-08） |
+
+### 1.4 当前代码实现范围
+
+本次按 `backend/src/main/java` 中的 Controller 映射逐项核对，共识别 **40 个 HTTP 路由方法**，其中包含 1 个为兼容旧代码而保留的登录接口。WebSocket 端点不计入该数量。
+
+| 业务域 | 当前代码情况 | 对应章节 |
+| --- | --- | --- |
+| 认证、用户、短信与扫码 | 已有登录、注册、刷新、退出、当前用户、资料修改、短信和模拟扫码代码 | 3 |
+| RBAC | 已有角色、权限树、角色授权、用户列表和用户角色分配代码 | 16.7 补充清单 |
+| 通用文件 | 已有 MinIO 预签名上传、上传确认、下载地址和文件列表代码 | 17.3 |
+| 私信 | 已有 8 个 HTTP 接口及 `/ws/private` WebSocket 通道 | 18 |
+| 教师快捷作业 | 仅有 `POST /api/v1/teacher/homework/quick`，不代表完整作业模块已实现 | 16.7 补充清单 |
+| 教务数据大屏 | 已有概览接口及 WebSocket 推送代码 | 16.7 补充清单 |
+| 健康检查与旧登录 | 已有 `/api/v1/health`；旧 `/api/v1/user/login` 仅为兼容保留 | 16 |
+| 课程、知识库、数字人、AI 会话、作业错题、学习计划、统计报告、课堂备考、通知、教师学情、AI 能力 | 当前未找到对应业务 Controller，统一按待开发接口管理 | 4～15、17.2、17.4～17.6 |
+
+> 文档中的数据库表、字段和返回结构仍需在开发时与增量 SQL、DTO/VO 同步复核。历史规划内容保留用于开发，不再以“✅”表示尚未编码的接口。
 
 ---
 
@@ -505,6 +524,8 @@
 
 ### 4.7 知识库文档上传  🔒
 
+> **口径调整**：本节为早期课程文档模型规划。新开发的 RAG 知识库统一采用第 17.3～17.4 章的“预签名上传 + 知识库挂载 + 入库”流程，不再重复实现本节旧上传链路。
+
 - **接口**：`POST /api/v1/courses/{course_id}/documents`
 - **说明**：上传教材 / 课件 / 习题册，返回文档 ID 后触发解析（4.8）。
 
@@ -539,7 +560,7 @@
 
 ## 5. 数字人伴侣（FR-01）
 
-> **对接表**：`digital_human_config`  
+> **对接表**：`avatar_config`
 > **覆盖需求**：FR-01 数字人学习陪伴 —— 统一入口、形象自定义、语音文字动作、情绪反馈、状态感知
 
 ### 5.1 获取数字人配置  🔒 📌
@@ -636,6 +657,8 @@
 ```
 
 ### 6.2 发送消息（流式，文字/语音/图片统一）  🔒 📌
+
+> **口径调整**：本节保留早期 Java 流式接口模型；架构调整后的新开发统一使用第 17.5.1 节 Python AI 服务路径，避免同时维护两条流式对话链路。
 
 - **接口**：`POST /api/v1/chat/sessions/{session_id}/messages/stream`
 - **覆盖需求**：FR-03 全部四项能力：
@@ -913,7 +936,7 @@ data: {"message_id": 9101, "guide_stage": 2, "audio_url": "https://cdn.../reply.
 
 ## 8. 错题本（FR-04）
 
-> **对接表**：`wrong_book`、`answer_record`  
+> **对接表**：`wrong_question`、`answer_record`
 > **覆盖需求**：FR-04 错题本  
 
 ### 8.1 错题列表  🔒 📌
@@ -966,7 +989,7 @@ data: {"message_id": 9101, "guide_stage": 2, "audio_url": "https://cdn.../reply.
 
 ## 9. 预习复习与学习计划（FR-05）
 
-> **对接表**：`study_plan`、`plan_task`  
+> **对接表**：`study_plan`、`review_reminder`
 > **覆盖需求**：FR-05 预习与复习规划 —— 预习清单、复习计划、记忆曲线、抽背默写速记  
 
 ### 9.1 学习计划列表  🔒
@@ -1070,7 +1093,7 @@ data: {"message_id": 9101, "guide_stage": 2, "audio_url": "https://cdn.../reply.
 
 ## 10. 学习统计与掌握度（FR-08）
 
-> **对接表**：`study_stat`、`knowledge_mastery`  
+> **对接表**：`study_stat_daily`、`knowledge_mastery`
 > **覆盖需求**：FR-08 学习数据与成长报告 —— 学情统计、掌握度雷达图数据源  
 
 ### 10.1 今日学情统计  🔒
@@ -1476,6 +1499,8 @@ data: {"message_id": 9101, "guide_stage": 2, "audio_url": "https://cdn.../reply.
 
 ### 16.2 通用文件上传  🔒
 
+> **口径调整**：新开发的上传场景优先使用第 17.3 章 MinIO 预签名直传流程；本节后端中转上传接口仅作为可选兼容能力，当前源码未实现。
+
 - **接口**：`POST /api/v1/files/upload`
 - **请求**：multipart/form-data，`file` 字段；`biz_type` 可选标注用途（`image`/`audio`/`doc`）。
 - **响应 data**：`{ "file_url": "https://...", "file_id": "...", "file_size": 123456 }`
@@ -1521,69 +1546,69 @@ data: {"message_id": 9101, "guide_stage": 2, "audio_url": "https://cdn.../reply.
 
 ### 16.7 基础接口清单汇总
 
-| 序号 | 模块 | 接口名称 | Method | Path | 状态 |
+| 序号 | 模块 | 接口名称 | Method | Path | 代码状态 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | 认证 | 登录 | POST | /api/v1/auth/login | ✅ |
 | 2 | 认证 | 刷新令牌 | POST | /api/v1/auth/refresh | ✅ |
 | 3 | 认证 | 退出登录 | POST | /api/v1/auth/logout | ✅ |
 | 4 | 认证 | 当前用户信息 | GET | /api/v1/auth/me | ✅ |
 | 5 | 用户 | 更新个人信息（含改密） | PATCH | /api/v1/users/me | ✅ |
-| 6 | 课程 | 课程列表 | GET | /api/v1/courses | ✅ |
-| 7 | 课程 | 课程详情 | GET | /api/v1/courses/{course_id} | ✅ |
+| 6 | 课程 | 课程列表 | GET | /api/v1/courses | 🟡 |
+| 7 | 课程 | 课程详情 | GET | /api/v1/courses/{course_id} | 🟡 |
 | 8 | 课程 | 自定义课程导入 | POST | /api/v1/courses | 🟡 |
-| 9 | 课程 | 章节树 | GET | /api/v1/courses/{course_id}/chapters | ✅ |
-| 10 | 知识点 | 知识点列表 | GET | /api/v1/chapters/{chapter_id}/knowledge-points | ✅ |
-| 11 | 知识点 | 课程知识点聚合 | GET | /api/v1/courses/{course_id}/knowledge-points/summary | ✅ |
-| 12 | 知识库 | 文档上传 | POST | /api/v1/courses/{course_id}/documents | ✅ |
-| 13 | 知识库 | 触发解析 | POST | /api/v1/documents/{document_id}/parse | ✅ |
-| 14 | 通用 | 异步任务进度 | GET | /api/v1/tasks/{task_id} | ✅ |
-| 15 | 知识库 | 文档列表 | GET | /api/v1/courses/{course_id}/documents | ✅ |
-| 16 | 数字人 | 获取配置 | GET | /api/v1/digital-human/config | ✅ |
-| 17 | 数字人 | 更新配置（形象自定义） | PUT | /api/v1/digital-human/config | ✅ |
-| 18 | 数字人 | 欢迎语（状态感知） | GET | /api/v1/digital-human/greeting | ✅ |
-| 19 | 聊天 | 创建会话 | POST | /api/v1/chat/sessions | ✅ |
-| 20 | 聊天 | 流式发消息 | POST | /api/v1/chat/sessions/{session_id}/messages/stream | ✅ |
-| 21 | 聊天 | 会话列表 | GET | /api/v1/chat/sessions | ✅ |
-| 22 | 聊天 | 会话详情（历史） | GET | /api/v1/chat/sessions/{session_id} | ✅ |
-| 23 | 聊天 | 消息反馈（情绪反馈） | POST | /api/v1/chat/messages/{message_id}/feedback | ✅ |
-| 24 | 聊天 | 结束会话 | POST | /api/v1/chat/sessions/{session_id}/close | ✅ |
-| 25 | 题库 | 题目详情 | GET | /api/v1/questions/{question_id} | ✅ |
-| 26 | 题库 | 同类题推荐 | GET | /api/v1/questions/{question_id}/similar | ✅ |
+| 9 | 课程 | 章节树 | GET | /api/v1/courses/{course_id}/chapters | 🟡 |
+| 10 | 知识点 | 知识点列表 | GET | /api/v1/chapters/{chapter_id}/knowledge-points | 🟡 |
+| 11 | 知识点 | 课程知识点聚合 | GET | /api/v1/courses/{course_id}/knowledge-points/summary | 🟡 |
+| 12 | 知识库 | 文档上传 | POST | /api/v1/courses/{course_id}/documents | 🟡 |
+| 13 | 知识库 | 触发解析 | POST | /api/v1/documents/{document_id}/parse | 🟡 |
+| 14 | 通用 | 异步任务进度 | GET | /api/v1/tasks/{task_id} | 🟡 |
+| 15 | 知识库 | 文档列表 | GET | /api/v1/courses/{course_id}/documents | 🟡 |
+| 16 | 数字人 | 获取配置 | GET | /api/v1/digital-human/config | 🟡 |
+| 17 | 数字人 | 更新配置（形象自定义） | PUT | /api/v1/digital-human/config | 🟡 |
+| 18 | 数字人 | 欢迎语（状态感知） | GET | /api/v1/digital-human/greeting | 🟡 |
+| 19 | 聊天 | 创建会话 | POST | /api/v1/chat/sessions | 🟡 |
+| 20 | 聊天 | 流式发消息 | POST | /api/v1/chat/sessions/{session_id}/messages/stream | 🟡 |
+| 21 | 聊天 | 会话列表 | GET | /api/v1/chat/sessions | 🟡 |
+| 22 | 聊天 | 会话详情（历史） | GET | /api/v1/chat/sessions/{session_id} | 🟡 |
+| 23 | 聊天 | 消息反馈（情绪反馈） | POST | /api/v1/chat/messages/{message_id}/feedback | 🟡 |
+| 24 | 聊天 | 结束会话 | POST | /api/v1/chat/sessions/{session_id}/close | 🟡 |
+| 25 | 题库 | 题目详情 | GET | /api/v1/questions/{question_id} | 🟡 |
+| 26 | 题库 | 同类题推荐 | GET | /api/v1/questions/{question_id}/similar | 🟡 |
 | 27 | 题库 | AI 智能出题 | POST | /api/v1/questions/ai-generate | 🟡 |
-| 28 | 作业 | 学生作业列表 | GET | /api/v1/homeworks | ✅ |
-| 29 | 作业 | 作业详情（智能分析） | GET | /api/v1/homeworks/{homework_id} | ✅ |
-| 30 | 作业 | 开始作答 | POST | /api/v1/homeworks/{homework_id}/start | ✅ |
-| 31 | 作业 | 提交单题 | POST | /api/v1/homeworks/submissions/{submission_id}/answers | ✅ |
-| 32 | 作业 | 提交整份 | POST | /api/v1/homeworks/submissions/{submission_id}/submit | ✅ |
-| 33 | 作业 | 提交记录查询 | GET | /api/v1/homeworks/{homework_id}/submission | ✅ |
+| 28 | 作业 | 学生作业列表 | GET | /api/v1/homeworks | 🟡 |
+| 29 | 作业 | 作业详情（智能分析） | GET | /api/v1/homeworks/{homework_id} | 🟡 |
+| 30 | 作业 | 开始作答 | POST | /api/v1/homeworks/{homework_id}/start | 🟡 |
+| 31 | 作业 | 提交单题 | POST | /api/v1/homeworks/submissions/{submission_id}/answers | 🟡 |
+| 32 | 作业 | 提交整份 | POST | /api/v1/homeworks/submissions/{submission_id}/submit | 🟡 |
+| 33 | 作业 | 提交记录查询 | GET | /api/v1/homeworks/{homework_id}/submission | 🟡 |
 | 34 | 作业 | 教师批改 | PATCH | /api/v1/homeworks/submissions/{submission_id}/grade | 🟢 |
 | 35 | 作业 | 教师发布作业 | POST | /api/v1/homeworks | 🟢 |
-| 36 | 错题 | 错题列表 | GET | /api/v1/wrong-book | ✅ |
-| 37 | 错题 | 标记已掌握 | POST | /api/v1/wrong-book/{id}/resolve | ✅ |
-| 38 | 错题 | 错题统计 | GET | /api/v1/wrong-book/stats | ✅ |
-| 39 | 计划 | 计划列表 | GET | /api/v1/study-plans | ✅ |
-| 40 | 计划 | 创建计划（预习清单） | POST | /api/v1/study-plans | ✅ |
-| 41 | 计划 | 计划详情（含任务） | GET | /api/v1/study-plans/{plan_id} | ✅ |
-| 42 | 计划 | 今日任务 | GET | /api/v1/plan-tasks/today | ✅ |
-| 43 | 计划 | 完成任务 | POST | /api/v1/plan-tasks/{task_id}/finish | ✅ |
-| 44 | 计划 | AI 复习计划（记忆曲线） | POST | /api/v1/study-plans/ai-generate | ✅ |
+| 36 | 错题 | 错题列表 | GET | /api/v1/wrong-book | 🟡 |
+| 37 | 错题 | 标记已掌握 | POST | /api/v1/wrong-book/{id}/resolve | 🟡 |
+| 38 | 错题 | 错题统计 | GET | /api/v1/wrong-book/stats | 🟡 |
+| 39 | 计划 | 计划列表 | GET | /api/v1/study-plans | 🟡 |
+| 40 | 计划 | 创建计划（预习清单） | POST | /api/v1/study-plans | 🟡 |
+| 41 | 计划 | 计划详情（含任务） | GET | /api/v1/study-plans/{plan_id} | 🟡 |
+| 42 | 计划 | 今日任务 | GET | /api/v1/plan-tasks/today | 🟡 |
+| 43 | 计划 | 完成任务 | POST | /api/v1/plan-tasks/{task_id}/finish | 🟡 |
+| 44 | 计划 | AI 复习计划（记忆曲线） | POST | /api/v1/study-plans/ai-generate | 🟡 |
 | 45 | 计划 | 考前冲刺计划 | POST | /api/v1/study-plans/exam-sprint | 🟡 |
-| 46 | 统计 | 今日学情 | GET | /api/v1/study-stats/today | ✅ |
-| 47 | 统计 | 每日学情（趋势） | GET | /api/v1/study-stats/daily | ✅ |
-| 48 | 统计 | 累计学情 | GET | /api/v1/study-stats/total | ✅ |
-| 49 | 统计 | 掌握度列表（雷达图） | GET | /api/v1/mastery | ✅ |
-| 50 | 报告 | 报告列表 | GET | /api/v1/growth-reports | ✅ |
-| 51 | 报告 | 报告详情 | GET | /api/v1/growth-reports/{report_id} | ✅ |
-| 52 | 报告 | 生成报告 | POST | /api/v1/growth-reports/generate | ✅ |
+| 46 | 统计 | 今日学情 | GET | /api/v1/study-stats/today | 🟡 |
+| 47 | 统计 | 每日学情（趋势） | GET | /api/v1/study-stats/daily | 🟡 |
+| 48 | 统计 | 累计学情 | GET | /api/v1/study-stats/total | 🟡 |
+| 49 | 统计 | 掌握度列表（雷达图） | GET | /api/v1/mastery | 🟡 |
+| 50 | 报告 | 报告列表 | GET | /api/v1/growth-reports | 🟡 |
+| 51 | 报告 | 报告详情 | GET | /api/v1/growth-reports/{report_id} | 🟡 |
+| 52 | 报告 | 生成报告 | POST | /api/v1/growth-reports/generate | 🟡 |
 | 53 | 试卷 | 试卷列表 | GET | /api/v1/exam-papers | 🟡 |
 | 54 | 试卷 | 试卷详情（真题解析） | GET | /api/v1/exam-papers/{paper_id} | 🟡 |
 | 55 | 试卷 | 试卷智能解析 | POST | /api/v1/exam-papers/smart-parse | 🟡 |
 | 56 | 课件 | 上传课堂资料 | POST | /api/v1/courses/{course_id}/courseware | 🟡 |
 | 57 | 课件 | 触发解析（ASR） | POST | /api/v1/courseware/{ware_id}/parse | 🟡 |
 | 58 | 课件 | 课件列表与解析结果 | GET | /api/v1/courses/{course_id}/courseware | 🟡 |
-| 59 | 通知 | 通知列表 | GET | /api/v1/notifications | ✅ |
-| 60 | 通知 | 标记已读 | POST | /api/v1/notifications/{id}/read | ✅ |
-| 61 | 通知 | 未读数 | GET | /api/v1/notifications/unread-count | ✅ |
+| 59 | 通知 | 通知列表 | GET | /api/v1/notifications | 🟡 |
+| 60 | 通知 | 标记已读 | POST | /api/v1/notifications/{id}/read | 🟡 |
+| 61 | 通知 | 未读数 | GET | /api/v1/notifications/unread-count | 🟡 |
 | 62 | 教师 | 工作台概览（预警） | GET | /api/v1/teacher/dashboard | 🟢 |
 | 63 | 教师 | 班级学情分析 | GET | /api/v1/teacher/classes/{class_id}/analysis | 🟢 |
 | 64 | 教师 | 学员个人学情 | GET | /api/v1/teacher/students/{user_id}/profile | 🟢 |
@@ -1591,15 +1616,40 @@ data: {"message_id": 9101, "guide_stage": 2, "audio_url": "https://cdn.../reply.
 | 66 | 教师 | 知识点批量导入 | POST | /api/v1/teacher/knowledge-points/batch-import | 🟢 |
 | 67 | 教师 | 知识点标签调整 | PATCH | /api/v1/teacher/knowledge-points/{kp_id}/tags | 🟢 |
 | 68 | 教师 | 题目批量导入 | POST | /api/v1/teacher/questions/batch-import | 🟢 |
-| 69 | AI | TTS 合成 | POST | /api/v1/ai/tts/synthesize | ✅ |
-| 70 | AI | ASR 识别 | POST | /api/v1/ai/asr/recognize | ✅ |
-| 71 | AI | OCR 识别（含拍照搜题） | POST | /api/v1/ai/ocr/recognize | ✅ |
-| 72 | 通用 | 全部字典 | GET | /api/v1/dicts/all | ✅ |
-| 73 | 通用 | 文件上传 | POST | /api/v1/files/upload | ✅ |
+| 69 | AI | TTS 合成 | POST | /api/v1/ai/tts/synthesize | 🟡 |
+| 70 | AI | ASR 识别 | POST | /api/v1/ai/asr/recognize | 🟡 |
+| 71 | AI | OCR 识别（含拍照搜题） | POST | /api/v1/ai/ocr/recognize | 🟡 |
+| 72 | 通用 | 全部字典 | GET | /api/v1/dicts/all | 🟡 |
+| 73 | 通用 | 文件上传 | POST | /api/v1/files/upload | 🟡 |
 | 74 | 通用 | 健康检查 | GET | /api/v1/health | ✅ |
 | 75 | 认证 | 账号注册 | POST | /api/v1/auth/register | ✅ |
 | 76 | 认证 | 发送短信验证码 | POST | /api/v1/auth/sms/code | ✅ |
 | 77 | 认证 | 手机验证码登录 | POST | /api/v1/auth/sms/login | ✅ |
+| 78 | 扫码 | 生成登录二维码 | POST | /qr/create | ✅ |
+| 79 | 扫码 | 轮询二维码状态 | GET | /qr/status | ✅ |
+| 80 | 扫码 | 模拟扫码 | POST | /qr/scan | ✅ |
+| 81 | 扫码 | 确认登录 | POST | /qr/confirm | ✅ |
+| 82 | 扫码 | 取消登录 | POST | /qr/cancel | ✅ |
+| 83 | 扫码 | 模拟手机候选账号 | GET | /qr/mock-users | ✅ |
+| 84 | RBAC | 角色列表 | GET | /api/v1/rbac/roles | ✅ |
+| 85 | RBAC | 角色详情 | GET | /api/v1/rbac/roles/{id} | ✅ |
+| 86 | RBAC | 新增角色 | POST | /api/v1/rbac/roles | ✅ |
+| 87 | RBAC | 修改角色 | PUT | /api/v1/rbac/roles/{id} | ✅ |
+| 88 | RBAC | 删除角色 | DELETE | /api/v1/rbac/roles/{id} | ✅ |
+| 89 | RBAC | 权限树 | GET | /api/v1/rbac/permissions/tree | ✅ |
+| 90 | RBAC | 查询角色权限 | GET | /api/v1/rbac/roles/{id}/permissions | ✅ |
+| 91 | RBAC | 保存角色权限 | PUT | /api/v1/rbac/roles/{id}/permissions | ✅ |
+| 92 | RBAC | 用户列表 | GET | /api/v1/rbac/users | ✅ |
+| 93 | RBAC | 分配用户角色 | PUT | /api/v1/rbac/users/role | ✅ |
+| 94 | 教师 | 一键布置随堂练习 | POST | /api/v1/teacher/homework/quick | ✅ |
+| 95 | 数据大屏 | 大屏首屏概览 | GET | /api/v1/dashboard/overview | ✅ |
+| 96 | 兼容接口 | 旧账号密码登录 | POST | /api/v1/user/login | ✅（兼容保留） |
+| 97 | 文件 | 申请预签名上传 URL | POST | /api/v1/files/presign | ✅ |
+| 98 | 文件 | 上传完成确认 | POST | /api/v1/files/{id}/confirm | ✅ |
+| 99 | 文件 | 申请预签名下载 URL | GET | /api/v1/files/{id}/download-url | ✅ |
+| 100 | 文件 | 文件列表 | GET | /api/v1/files | ✅ |
+
+> 补充说明：第 18 章另列出 8 个已经编码的私信 HTTP 接口；`/ws/private` 与数据大屏 WebSocket 均为实时通道，未混入上述 HTTP 清单。
 
 ---
 
